@@ -10,7 +10,8 @@ const STATE_KEY = 'state';
 const LOCAL_STATE_FILE = process.env.NETLIFY_LOCAL_STATE_FILE || path.join(__dirname, '..', '..', 'data', 'netlify-state.json');
 const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-before-production';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
-const REGISTRATION_KEY = process.env.REGISTRATION_KEY || '123456789';
+const REGISTRATION_KEY = process.env.REGISTRATION_KEY || '';
+const REQUIRE_REGISTRATION_KEY = process.env.REQUIRE_REGISTRATION_KEY === '1';
 
 function createInitialState() {
   return {
@@ -187,7 +188,7 @@ exports.handler = async (event) => {
         return json(400, { ok: false, error: 'Ad, telefon ve en az 6 karakter sifre gerekli.' });
       }
 
-      if (key !== REGISTRATION_KEY) {
+      if (REQUIRE_REGISTRATION_KEY && key !== REGISTRATION_KEY) {
         return json(403, { ok: false, error: 'Gecersiz kayit anahtari.' });
       }
 
@@ -249,7 +250,7 @@ exports.handler = async (event) => {
       const displayName = String(body.displayName || '').trim();
       const target = findUserByPhone(state, phone);
 
-      if (!target) return json(404, { ok: false, error: 'Bu telefonla kayitli kullanici yok.' });
+      if (!target) return json(404, { ok: false, error: 'Bu telefon henuz Kaplumbaga hesabi degil. Karsi taraf once kayit olmali.' });
       if (target.id === session.user.id) return json(400, { ok: false, error: 'Kendinizi ekleyemezsiniz.' });
 
       const exists = state.contacts.some((contact) => contact.ownerId === session.user.id && contact.userId === target.id);

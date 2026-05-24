@@ -29,8 +29,45 @@ const languageNames = {
   zh: '中文', hi: 'हिन्दी', nl: 'Nederlands', pl: 'Polski', uk: 'Українська', el: 'Ελληνικά',
   fa: 'فارسی', vi: 'Tiếng Việt', id: 'Bahasa Indonesia',
 };
-const API_BASE_URL = (typeof window !== 'undefined' && window.localStorage.getItem('kaplumbaga:apiUrl')) || import.meta.env.VITE_API_URL || (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' ? window.location.origin : 'http://127.0.0.1:4000');
-const SOCKET_ENABLED = import.meta.env.VITE_SOCKET_ENABLED === '1' || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
+const PRODUCTION_API_URL = 'https://nova-sohbet-api.onrender.com';
+
+function normalizeApiUrl(value) {
+  return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function isLocalHost(hostname) {
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
+function getDefaultApiUrl() {
+  const configuredUrl = normalizeApiUrl(import.meta.env.VITE_API_URL);
+  if (configuredUrl) return configuredUrl;
+  if (typeof window !== 'undefined' && isLocalHost(window.location.hostname)) {
+    return 'http://127.0.0.1:4000';
+  }
+  return PRODUCTION_API_URL;
+}
+
+function getStoredApiUrl() {
+  if (typeof window === 'undefined') return '';
+  const storedUrl = normalizeApiUrl(window.localStorage.getItem('kaplumbaga:apiUrl'));
+  if (!storedUrl) return '';
+
+  const isHostedPage = !isLocalHost(window.location.hostname);
+  const pointsToPage = storedUrl === normalizeApiUrl(window.location.origin);
+  const pointsToOldRenderSlug = storedUrl.includes('kaplumbaga-api.onrender.com');
+  const pointsToLocalApiFromLive = isHostedPage && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(storedUrl);
+
+  if (pointsToPage || pointsToOldRenderSlug || pointsToLocalApiFromLive) {
+    window.localStorage.removeItem('kaplumbaga:apiUrl');
+    return '';
+  }
+
+  return storedUrl;
+}
+
+const API_BASE_URL = getStoredApiUrl() || getDefaultApiUrl();
+const SOCKET_ENABLED = (import.meta.env.VITE_SOCKET_ENABLED === '1' || (typeof window !== 'undefined' && isLocalHost(window.location.hostname))) && !API_BASE_URL.includes('netlify.app');
 const TRANSLATE_URL = import.meta.env.VITE_TRANSLATE_URL || 'https://translate.googleapis.com/translate_a/single';
 const translationDictionary = {
   'hello': { tr: 'merhaba', es: 'hola' },
@@ -54,11 +91,16 @@ function readStoredValue(key, fallback, legacyKey) {
   }
 }
 
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 if (typeof window !== 'undefined' && window.localStorage.getItem('kaplumbaga:version') !== APP_VERSION) {
-  // Clear stale demo/localStorage data when app version changes
+  // Clear stale local cache when the live API contract changes.
   ['kaplumbaga:contacts', 'kaplumbaga:messages', 'nova:contacts', 'nova:messages'].forEach((k) => window.localStorage.removeItem(k));
   window.localStorage.setItem('kaplumbaga:version', APP_VERSION);
+}
+
+function appendUniqueMessage(items, message) {
+  const existing = items || [];
+  return existing.some((item) => String(item.id) === String(message.id)) ? existing : [...existing, message];
 }
 
 function App() {
@@ -82,6 +124,7 @@ function App() {
   const [isQuickPanelOpen, setIsQuickPanelOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeCall, setActiveCall] = useState(null);
+  const [incomingCall, setIncomingCall] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editDraft, setEditDraft] = useState('');
@@ -99,6 +142,8 @@ function App() {
   const audioChunksRef = useRef([]);
   const messagesEndRef = useRef(null);
   const peerConnectionRef = useRef(null);
+  const pendingIceCandidatesRef = useRef([]);
+  const lastOfferRef = useRef('');
   const socketRef = useRef(null);
 
   const activeContact = contactList.find((contact) => contact.id === activeContactId) ?? contactList[0] ?? {
@@ -171,6 +216,34 @@ function App() {
   }, [settings.notifications]);
 
   useEffect(() => {
+    if (!user?.token) return;
+
+    let cancelled = false;
+    fetch(`${API_BASE_URL}/api/me`, {
+      headers: { Authorization: `Bearer ${user.token}` },
+    })
+      .then(async (response) => {
+        if (response.ok) return null;
+        if (response.status === 401 || response.status === 404) {
+          return 'Oturum yenilendi. Lütfen tekrar giriş yapın.';
+        }
+        return null;
+      })
+      .then((message) => {
+        if (cancelled || !message) return;
+        window.localStorage.removeItem(storageKeys.user);
+        window.localStorage.removeItem(legacyStorageKeys.user);
+        setUser(null);
+        setAuthError(message);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.token]);
+
+  useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
@@ -208,6 +281,7 @@ function App() {
       });
 
       socketRef.current.on('message:new', (message) => {
+        if ((message.senderId || message.sender_id) === user?.id) return;
         const now = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
         const incomingMessage = buildMessage({
           id: message.id,
@@ -223,7 +297,7 @@ function App() {
         } else {
           setMessages((current) => ({
             ...current,
-            [message.conversationId]: [...(current[message.conversationId] ?? []), incomingMessage],
+            [message.conversationId]: appendUniqueMessage(current[message.conversationId], incomingMessage),
           }));
           setContactList((current) => current.map((c) => (
             c.id === message.conversationId
@@ -243,23 +317,53 @@ function App() {
         setTypingContactId(isTyping ? activeContactId : null);
       });
 
-      socketRef.current.on('call:signal', async ({ from, type, payload }) => {
-        if (!peerConnectionRef.current) return;
-        
-        if (type === 'offer') {
-          await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(payload));
-          const answer = await peerConnectionRef.current.createAnswer();
-          await peerConnectionRef.current.setLocalDescription(answer);
-          socketRef.current.emit('call:signal', {
-            conversationId: activeContactId,
-            type: 'answer',
-            payload: answer
-          });
-        } else if (type === 'answer') {
-          await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(payload));
-        } else if (type === 'ice-candidate') {
-          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(payload));
+      socketRef.current.on('call:signal', async ({ conversationId, from, type, payload }) => {
+        if (from === user?.id) return;
+
+        try {
+          if (type === 'offer') {
+            const offerKey = `${conversationId}:${from}:${payload?.sdp || ''}`;
+            if (lastOfferRef.current === offerKey) return;
+            lastOfferRef.current = offerKey;
+            pendingIceCandidatesRef.current = [];
+            const contact = findCallContact(conversationId);
+            setIncomingCall({
+              conversationId,
+              from,
+              mediaType: detectCallType(payload),
+              payload,
+              contact,
+              receivedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+            });
+            if (settings.soundEnabled) playNotificationSound();
+            return;
+          }
+
+          if (type === 'reject') {
+            finishCall({ conversationId, banner: 'Arama reddedildi.' });
+            return;
+          }
+
+          const pc = peerConnectionRef.current;
+          if (type === 'answer' && pc) {
+            await pc.setRemoteDescription(new RTCSessionDescription(payload));
+            await applyPendingIceCandidates(pc);
+          } else if (type === 'ice-candidate' && payload) {
+            if (pc?.remoteDescription) {
+              await pc.addIceCandidate(new RTCIceCandidate(payload));
+            } else {
+              pendingIceCandidatesRef.current.push(payload);
+            }
+          }
+        } catch (error) {
+          console.error('Arama sinyal hatası:', error);
+          setCallBanner('Arama bağlantısı kurulamadı.');
+          window.setTimeout(() => setCallBanner(''), 3000);
         }
+      });
+
+      socketRef.current.on('call:end', ({ conversationId }) => {
+        finishCall({ conversationId, banner: 'Arama sonlandı.' });
       });
 
       socketRef.current.on('conversation:read', ({ conversationId, userId }) => {
@@ -375,7 +479,7 @@ function App() {
     const name = formData.get('name').trim();
     const contact = formData.get('contact').trim();
     const password = formData.get('password').trim();
-    const key = formData.get('key').trim();
+    const key = formData.get('key')?.trim() || '';
 
     if (!name || !contact || password.length < 6) {
       setAuthError('Ad, telefon ve en az 6 karakter şifre gerekli.');
@@ -392,9 +496,6 @@ function App() {
       });
 
       if (response.status === 401) {
-        if (!key) {
-          throw new Error('Yeni kayıt için kayıt anahtarı gerekli.');
-        }
         response = await fetch(`${API_BASE_URL}/api/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -491,10 +592,7 @@ function App() {
   function addMessageToConversation(contactId, message) {
     setMessages((current) => ({
       ...current,
-      [contactId]: [
-        ...(current[contactId] ?? []),
-        message,
-      ],
+      [contactId]: appendUniqueMessage(current[contactId], message),
     }));
     requestRealTranslation(message, contactId);
   }
@@ -559,7 +657,7 @@ function App() {
     event.target.value = '';
   }
 
-  function attachDemoPhoto() {
+  function attachLocalPhoto() {
     const now = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
     const text = '📷 Fotoğraf eklendi';
 
@@ -571,62 +669,132 @@ function App() {
     )), activeContactId));
   }
 
+  function detectCallType(description) {
+    return description?.sdp?.includes('m=video') ? 'video' : 'audio';
+  }
+
+  function findCallContact(conversationId) {
+    return contactList.find((contact) => contact.id === conversationId)
+      || (activeContactId === conversationId ? activeContact : null)
+      || {
+        id: conversationId,
+        name: 'Gelen arama',
+        avatar: '🐢',
+        status: '',
+      };
+  }
+
+  function createPeerConnection(conversationId, { clearPending = false } = {}) {
+    peerConnectionRef.current?.close();
+    if (clearPending) pendingIceCandidatesRef.current = [];
+
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+      ],
+    });
+
+    peerConnectionRef.current = pc;
+
+    pc.ontrack = (event) => {
+      setActiveCall((current) => {
+        if (!current) return current;
+        return { ...current, remoteStream: event.streams[0] };
+      });
+    };
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socketRef.current) {
+        socketRef.current.emit('call:signal', {
+          conversationId,
+          type: 'ice-candidate',
+          payload: event.candidate,
+        });
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (['failed', 'disconnected'].includes(pc.connectionState)) {
+        setCallBanner('Arama bağlantısı kesildi.');
+        window.setTimeout(() => setCallBanner(''), 3000);
+      }
+    };
+
+    return pc;
+  }
+
+  async function applyPendingIceCandidates(pc) {
+    const candidates = pendingIceCandidatesRef.current.splice(0);
+    for (const candidate of candidates) {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+  }
+
+  function finishCall({ emitEnd = false, conversationId = null, banner = '' } = {}) {
+    const targetConversationId = conversationId || activeCall?.conversationId || incomingCall?.conversationId || activeContactId;
+
+    if (emitEnd && targetConversationId && socketRef.current) {
+      socketRef.current.emit('call:end', { conversationId: targetConversationId });
+    }
+
+    setActiveCall((current) => {
+      current?.stream?.getTracks().forEach((track) => track.stop());
+      return null;
+    });
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = null;
+    pendingIceCandidatesRef.current = [];
+    lastOfferRef.current = '';
+    setIncomingCall(null);
+
+    if (banner) {
+      setCallBanner(banner);
+      window.setTimeout(() => setCallBanner(''), 3000);
+    }
+  }
+
   async function startCall(type) {
     if (!activeContactId) return;
-    setCallBanner(`${activeContact.name} için ${type === 'video' ? 'görüntülü' : 'sesli'} arama başlatılıyor...`);
+    if (!socketRef.current) {
+      setCallBanner('Canlı arama bağlantısı kurulamadı. Sayfayı yenileyin.');
+      window.setTimeout(() => setCallBanner(''), 3500);
+      return;
+    }
+
+    const conversationId = activeContactId;
+    const contact = activeContact;
+    setCallBanner(`${contact.name} için ${type === 'video' ? 'görüntülü' : 'sesli'} arama başlatılıyor...`);
     let stream = null;
     let error = '';
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       error = 'Tarayıcınız aramayı desteklemiyor.';
-      setActiveCall({ type, contact: activeContact, startedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }), muted: false, cameraOff: false, stream: null, error, remoteStream: null });
+      setActiveCall({ type, contact, conversationId, startedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }), muted: false, cameraOff: false, stream: null, error, remoteStream: null });
       window.setTimeout(() => setCallBanner(''), 3000);
       return;
     }
 
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true });
-      
-      const pc = new RTCPeerConnection({
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-        ]
-      });
-      
-      peerConnectionRef.current = pc;
-      
+
+      const pc = createPeerConnection(conversationId, { clearPending: true });
+
       stream.getTracks().forEach(track => {
         pc.addTrack(track, stream);
       });
-      
-      pc.ontrack = (event) => {
-        setActiveCall(current => {
-          if (!current) return current;
-          return { ...current, remoteStream: event.streams[0] };
-        });
-      };
-      
-      pc.onicecandidate = (event) => {
-        if (event.candidate && socketRef.current) {
-          socketRef.current.emit('call:signal', {
-            conversationId: activeContactId,
-            type: 'ice-candidate',
-            payload: event.candidate
-          });
-        }
-      };
-      
+
+      setActiveCall({ type, contact, conversationId, startedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }), muted: false, cameraOff: false, stream, error: '', remoteStream: null });
+
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      
-      socketRef.current?.emit('call:signal', {
-        conversationId: activeContactId,
+
+      socketRef.current.emit('call:signal', {
+        conversationId,
         type: 'offer',
-        payload: offer
+        payload: offer,
       });
-      
     } catch (err) {
       console.error('Call error:', err);
       if (err.name === 'NotAllowedError') {
@@ -638,17 +806,82 @@ function App() {
       } else {
         error = 'Arama başlatılamadı. HTTPS kullanın.';
       }
+      stream?.getTracks().forEach((track) => track.stop());
+      setActiveCall({ type, contact, conversationId, startedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }), muted: false, cameraOff: false, stream: null, error, remoteStream: null });
     }
 
-    setActiveCall({ type, contact: activeContact, startedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }), muted: false, cameraOff: false, stream, error, remoteStream: null });
     window.setTimeout(() => setCallBanner(''), 3000);
   }
 
+  async function acceptIncomingCall() {
+    if (!incomingCall) return;
+    const call = incomingCall;
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setIncomingCall(null);
+      setCallBanner('Tarayıcınız aramayı desteklemiyor.');
+      window.setTimeout(() => setCallBanner(''), 3500);
+      return;
+    }
+
+    let stream = null;
+
+    try {
+      setIncomingCall(null);
+      setActiveContactId(call.conversationId);
+      socketRef.current?.emit('conversation:join', { conversationId: call.conversationId });
+
+      stream = await navigator.mediaDevices.getUserMedia({ video: call.mediaType === 'video', audio: true });
+      const pc = createPeerConnection(call.conversationId);
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      setActiveCall({
+        type: call.mediaType,
+        contact: call.contact,
+        conversationId: call.conversationId,
+        startedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+        muted: false,
+        cameraOff: false,
+        stream,
+        error: '',
+        remoteStream: null,
+      });
+
+      await pc.setRemoteDescription(new RTCSessionDescription(call.payload));
+      await applyPendingIceCandidates(pc);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socketRef.current?.emit('call:signal', {
+        conversationId: call.conversationId,
+        type: 'answer',
+        payload: answer,
+      });
+    } catch (error) {
+      console.error('Gelen arama hatası:', error);
+      stream?.getTracks().forEach((track) => track.stop());
+      peerConnectionRef.current?.close();
+      peerConnectionRef.current = null;
+      setActiveCall(null);
+      setCallBanner('Arama kabul edilemedi. Kamera/mikrofon iznini kontrol edin.');
+      window.setTimeout(() => setCallBanner(''), 4000);
+    }
+  }
+
+  function rejectIncomingCall() {
+    if (incomingCall?.conversationId && socketRef.current) {
+      socketRef.current.emit('call:signal', {
+        conversationId: incomingCall.conversationId,
+        type: 'reject',
+        payload: null,
+      });
+    }
+    setIncomingCall(null);
+    pendingIceCandidatesRef.current = [];
+    lastOfferRef.current = '';
+  }
+
   function endCall() {
-    activeCall?.stream?.getTracks().forEach((track) => track.stop());
-    peerConnectionRef.current?.close();
-    peerConnectionRef.current = null;
-    setActiveCall(null);
+    finishCall({ emitEnd: true });
   }
 
   function toggleMute() {
@@ -792,7 +1025,7 @@ function App() {
           unread: 0,
         };
 
-        setContactList((current) => [newContact, ...current]);
+        setContactList((current) => [newContact, ...current.filter((contact) => contact.id !== id)]);
         setMessages((current) => ({
           ...current,
           [id]: [
@@ -812,6 +1045,8 @@ function App() {
       }
     } catch (error) {
       console.error('Kişi ekleme hatası:', error);
+      setCallBanner(error.message || 'Kişi eklenemedi.');
+      window.setTimeout(() => setCallBanner(''), 4000);
     }
   }
 
@@ -1007,7 +1242,7 @@ function App() {
     }
   }
 
-  function resetDemoData() {
+  function resetLocalData() {
     window.localStorage.removeItem(storageKeys.contacts);
     window.localStorage.removeItem(storageKeys.messages);
     window.localStorage.removeItem(legacyStorageKeys.contacts);
@@ -1192,7 +1427,7 @@ function App() {
               Sunucu (API) URL
               <input
                 type="url"
-                placeholder="https://kaplumbaga-api.onrender.com"
+                placeholder={API_BASE_URL}
                 defaultValue={window.localStorage.getItem('kaplumbaga:apiUrl') || ''}
                 onBlur={(e) => {
                   const v = e.target.value.trim().replace(/\/$/, '');
@@ -1202,7 +1437,7 @@ function App() {
               />
             </label>
             <button type="button" onClick={() => window.location.reload()}>Sunucuyu yeniden bağla</button>
-            <button type="button" onClick={resetDemoData}>Demo verileri sıfırla</button>
+            <button type="button" onClick={resetLocalData}>Yerel önbelleği temizle</button>
             <button type="button" onClick={logout}>Çıkış yap</button>
           </section>
         )}
@@ -1350,6 +1585,22 @@ function App() {
 
         {callBanner && <div className="call-banner">{callBanner}</div>}
 
+        {incomingCall && !activeCall && (
+          <div className="incoming-call">
+            <div className="incoming-call-info">
+              <span className="turtle-logo">🐢</span>
+              <div>
+                <strong>{incomingCall.contact.name}</strong>
+                <span>{incomingCall.mediaType === 'video' ? 'Görüntülü arama' : 'Sesli arama'} geliyor · {incomingCall.receivedAt}</span>
+              </div>
+            </div>
+            <div className="incoming-call-actions">
+              <button type="button" onClick={rejectIncomingCall}>Reddet</button>
+              <button type="button" onClick={acceptIncomingCall}>Kabul Et</button>
+            </div>
+          </div>
+        )}
+
         {activeCall && (
           <div className="call-screen">
             <div className="call-card">
@@ -1394,7 +1645,7 @@ function App() {
 
         <div className="security-note">
           <ShieldCheck size={17} />
-          Mesajlarınız bu demo arayüzde tarayıcı oturumu boyunca saklanır.
+          Mesajlar canlı sunucuda saklanır; bu cihazdaki önbellek sadece görünümü hızlandırır.
         </div>
 
         <label className="message-search">
@@ -1558,14 +1809,6 @@ function LoginScreen({ onLogin, authError }) {
             <div className="input-wrap">
               <Lock size={18} />
               <input name="password" type="password" placeholder="" autoComplete="current-password" />
-            </div>
-          </label>
-
-          <label>
-            <span>Kayıt Anahtarı</span>
-            <div className="input-wrap">
-              <ShieldCheck size={18} />
-              <input name="key" type="password" placeholder="" autoComplete="off" />
             </div>
           </label>
 

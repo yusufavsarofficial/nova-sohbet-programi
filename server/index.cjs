@@ -17,7 +17,8 @@ const db = require('./database.cjs');
 const PORT = Number(process.env.PORT || 4000);
 const HOST = process.env.HOST || '0.0.0.0';
 const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-before-production';
-const REGISTRATION_KEY = process.env.REGISTRATION_KEY || '123456789';
+const REGISTRATION_KEY = process.env.REGISTRATION_KEY || '';
+const REQUIRE_REGISTRATION_KEY = process.env.REQUIRE_REGISTRATION_KEY === '1';
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads');
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -169,7 +170,7 @@ function createApp() {
       return res.status(400).json({ ok: false, error: 'Ad, telefon ve en az 6 karakter şifre gerekli.' });
     }
 
-    if (key !== REGISTRATION_KEY) {
+    if (REQUIRE_REGISTRATION_KEY && key !== REGISTRATION_KEY) {
       return res.status(403).json({ ok: false, error: 'Geçersiz kayıt anahtarı.' });
     }
 
@@ -230,7 +231,7 @@ function createApp() {
     const target = await getUserByPhoneInput(phone);
 
     if (!owner) return res.status(404).json({ ok: false, error: 'Kullanıcı bulunamadı.' });
-    if (!target) return res.status(404).json({ ok: false, error: 'Bu telefonla kayıtlı kullanıcı yok.' });
+    if (!target) return res.status(404).json({ ok: false, error: 'Bu telefon henüz Kaplumbağa hesabı değil. Karşı taraf önce kayıt olmalı.' });
     if (target.id === owner.id) return res.status(400).json({ ok: false, error: 'Kendinizi ekleyemezsiniz.' });
 
     await db.addContact(owner.id, target.id, displayName);
@@ -284,7 +285,7 @@ function createApp() {
       id: crypto.randomUUID(),
       conversationId: req.params.conversationId,
       senderId: req.auth.sub,
-      senderName: sender?.name || 'Nova Kullanıcısı',
+      senderName: sender?.name || 'Kaplumbağa Kullanıcısı',
       text,
       attachment,
       createdAt: Date.now(),

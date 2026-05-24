@@ -27,7 +27,7 @@ API varsayılan olarak `http://127.0.0.1:4000` adresinde çalışır.
 
 ## Giriş
 
-İlk kayıt için `REGISTRATION_KEY` gerekir. Varsayılan geliştirme anahtarı `123456789` değeridir; canlıda bu değeri ortam değişkeniyle değiştirin.
+Canlı kullanımda yeni kullanıcılar telefon ve şifreyle kayıt olabilir. Kapalı beta istendiğinde `REQUIRE_REGISTRATION_KEY=1` yapıp `REGISTRATION_KEY` belirleyin.
 
 ## Production Notları
 

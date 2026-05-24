@@ -21,6 +21,8 @@ services:
         generateValue: true
       - key: REGISTRATION_KEY
         value: "123456789"
+      - key: REQUIRE_REGISTRATION_KEY
+        value: "0"
       - key: CORS_ORIGIN
         value: "*"
       - key: DATABASE_URL

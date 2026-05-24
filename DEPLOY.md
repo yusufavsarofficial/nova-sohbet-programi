@@ -27,13 +27,13 @@ git push origin main
 3. Repoyu seç → `render.yaml` otomatik algılanır
 4. **Apply** → Hem PostgreSQL hem API otomatik kurulur
 5. ~5 dakika bekle. Logs'ta `Kaplumbağa API çalışıyor` görmelisin
-6. URL örneği: `https://kaplumbaga-api.onrender.com`
+6. URL örneği: `https://nova-sohbet-api.onrender.com`
 
 ### C. Sağlık Kontrolü
 
 Tarayıcıda aç:
 ```
-https://kaplumbaga-api.onrender.com/health
+https://nova-sohbet-api.onrender.com/health
 ```
 Cevap: `{"ok":true,"app":"Kaplumbağa","db":"postgres"}`
 
@@ -43,7 +43,8 @@ Cevap: `{"ok":true,"app":"Kaplumbağa","db":"postgres"}`
 |---|---|
 | `DATABASE_URL` | Postgres bağlantısı (otomatik) |
 | `JWT_SECRET` | Otomatik üretilir |
-| `REGISTRATION_KEY` | `123456789` (istersen değiştir) |
+| `REQUIRE_REGISTRATION_KEY` | `0` (canlıda açık kayıt) |
+| `REGISTRATION_KEY` | Sadece `REQUIRE_REGISTRATION_KEY=1` ise kullanılır |
 | `CORS_ORIGIN` | `*` (sonra Netlify URL'ne kısıtla) |
 
 ---
@@ -61,7 +62,7 @@ Cascade'e "Netlify'a deploy et" dedin, ben hallediyorum.
 3. Build command: `npm run build`
 4. Publish directory: `dist`
 5. **Environment variables**:
-   - `VITE_API_URL` = `https://kaplumbaga-api.onrender.com`
+   - `VITE_API_URL` = `https://nova-sohbet-api.onrender.com`
 6. Deploy
 
 ---
@@ -78,7 +79,7 @@ Veya Netlify env var'ı `VITE_API_URL` olarak ayarla, redeploy et.
 ## 4) Güvenlik İyileştirmeleri (Production)
 
 - **CORS_ORIGIN**: `https://senin-site.netlify.app` olarak kısıtla
-- **REGISTRATION_KEY**: `123456789` yerine güçlü bir anahtar (örn. `Kaplum-2026-X9k2`)
+- **Kapalı beta**: Gerekirse `REQUIRE_REGISTRATION_KEY=1` ve güçlü bir `REGISTRATION_KEY` kullan
 - **HTTPS**: Hem Netlify hem Render otomatik HTTPS sağlar (WebRTC, mikrofon, kamera, bildirimler için zorunlu)
 - **Custom domain** (opsiyonel): Netlify ve Render'da domain ekleyebilirsin
 
@@ -89,7 +90,7 @@ Veya Netlify env var'ı `VITE_API_URL` olarak ayarla, redeploy et.
 | Sorun | Çözüm |
 |---|---|
 | `CORS hatası` | Render'da `CORS_ORIGIN` = Netlify URL ekle |
-| `Geçersiz kayıt anahtarı` | `REGISTRATION_KEY` env'ini kontrol et |
+| Yeni kullanıcı kayıt olamıyor | `REQUIRE_REGISTRATION_KEY` değerinin canlıda `0` olduğundan emin ol |
 | `Mikrofon/kamera çalışmıyor` | Site mutlaka HTTPS olmalı |
 | `Render uyuyor (cold start)` | Free plan 15 dk inaktif sonra uyur. İlk istek 30sn sürebilir. Ücretli plan ile çözülür |
 | `Socket bağlanmıyor` | Render API URL'inde HTTPS, Netlify env `VITE_API_URL` doğru mu kontrol et |

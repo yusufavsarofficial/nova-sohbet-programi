@@ -469,6 +469,63 @@ button.avatar {
   font-weight: 700;
 }
 
+.incoming-call {
+  width: min(620px, calc(100% - 36px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  align-self: center;
+  margin: 14px 18px 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(0, 128, 105, 0.22);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 14px 34px rgba(11, 20, 26, 0.14);
+}
+
+.incoming-call-info,
+.incoming-call-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.incoming-call-info .turtle-logo {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: white;
+  background: #008069;
+  font-size: 24px;
+}
+
+.incoming-call-info div {
+  display: grid;
+  gap: 3px;
+}
+
+.incoming-call-info span:last-child {
+  color: #54656f;
+  font-size: 13px;
+}
+
+.incoming-call-actions button {
+  min-width: 84px;
+  height: 38px;
+  border-radius: 999px;
+  color: #0b5f50;
+  background: #eef7f3;
+  font-weight: 800;
+}
+
+.incoming-call-actions button:last-child {
+  color: white;
+  background: #008069;
+}
+
 .security-note {
   align-self: center;
   display: flex;
@@ -763,6 +820,15 @@ button.avatar {
 
   .message-bubble {
     max-width: 88%;
+  }
+
+  .incoming-call {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .incoming-call-actions button {
+    flex: 1;
   }
 }
 
