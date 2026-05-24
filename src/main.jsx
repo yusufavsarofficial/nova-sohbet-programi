@@ -8,17 +8,17 @@ const defaultContacts = [];
 const starterMessages = {};
 
 const storageKeys = {
-  user: 'kaplumbaga:user',
-  contacts: 'kaplumbaga:contacts',
-  messages: 'kaplumbaga:messages',
-  settings: 'kaplumbaga:settings',
-};
-
-const legacyStorageKeys = {
   user: 'nova:user',
   contacts: 'nova:contacts',
   messages: 'nova:messages',
   settings: 'nova:settings',
+};
+
+const legacyStorageKeys = {
+  user: 'kaplumbaga:user',
+  contacts: 'kaplumbaga:contacts',
+  messages: 'kaplumbaga:messages',
+  settings: 'kaplumbaga:settings',
 };
 
 const emojis = ['😀','😃','😄','😁','😂','🤣','😊','😍','😘','😎','😢','😭','😡','👍','👎','👏','🙏','💪','🔥','🎉','❤️','💚','💙','⭐','✅','❌','🐢','📷','🎤','📎','🚀','☕','👋','🤝','👀','🌟','💯','🎁','🎈','🎂','🍰','🍕','🍔','🍟','🌮','🌯','🍿','🥤','🍺','🍷','🍸','🥂','🍎','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🥝','🍑','🥭','🍍','🥥','🥑','🍆','🥔','🥕','🌽','🥦','🥬','🥒','🍄','🥜','🌰','🍞','🥐','🥖','🥨','🥯','🥞','🧇','🧀','🍖','🍗','🥩','🥓','🍔','🍟','🍕','🌭','🥪','🌮','🌯','🥙','🧆','🥚','🍳','🥘','🍲','🥣','🥗','🍿','🧈','🧂','🥫','🍱','🍘','🍙','🍚','🍛','🍜','🍝','🍠','🍢','🍣','🍤','🍥','🥮','🍡','🥟','🥠','🥡','🦀','🦞','🦐','🦑','🦪','🍦','🍧','🍨','🍩','🍪','🎂','🍰','🧁','🥧','🍫','🍬','🍭','🍮','🍯','🍼','🥛','☕','🍵','🍶','🍾','🍷','🍸','🍹','🍺','🍻','🥂','🥃','🥤','🧃','🧉','🧊','🥢','🍽️','🍴','🥄','🔪','🏺','🌍','🌎','🌏','🌐','🗺️','🗾','🧭','🏔️','⛰️','🌋','🗻','🏕️','🏖️','🏜️','🏝️','🏞️','🏟️','🏛️','🏗️','🧱','🏘️','🏚️','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬','🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','🛕','🕍','⛩️','🕋','⛲','⛺','🌁','🌃','🏙️','🌄','🌅','🌆','🌇','🌉','♨️','🎠','🎡','🎢','💈','🎪','🚂','🚃','🚄','🚅','🚆','🚇','🚈','🚉','🚊','🚝','🚞','🚋','🚌','🚍','🚎','🚐','🚑','🚒','🚓','🚔','🚕','🚖','🚗','🚘','🚙','🚚','🚛','🚜','🏎️','🏍️','🛵','🦽','🦼','🛺','🚲','🛴','🛹','🚏','🛣️','🛤️','🛢️','⛽','🚨','🚥','🚦','🛑','🚧','⚓','⛵','🛶','🚤','🛳️','⛴️','🛥️','🚢','✈️','🛩️','🛫','🛬','🪂','💺','🚁','🚟','🚠','🚡','🛰️','🚀','🛸','🛎️','🧳','⌛','⏳','⌚','⏰','⏱️','⏲️','🕰️','🕛','🕧','🕐','🕜','🕑','🕝','🕒','🕞','🕓','🕟','🕔','🕠','🕕','🕡','🕖','🕢','🕗','🕣','🕘','🕤','🕙','🕥','🕚','🕦','🌑','🌒','🌓','🌔','🌕','🌖','🌗','🌘','🌙','🌚','🌛','🌜','🌡️','☀️','🌝','🌞','⭐','🌟','🌠','☁️','⛅','⛈️','🌤️','🌥️','🌦️','🌧️','🌨️','🌩️','🌪️','🌫️','🌬️','🌀','🌈','🌂','☂️','☔','⛱️','⚡','❄️','☃️','⛄','☄️','🔥','💧','🌊'];
@@ -739,7 +739,7 @@ function App() {
             {
               id: Date.now() + 1,
               from: 'them',
-              text: `${result.contact.name} kişisi Kaplumbağa rehberine eklendi.`,
+              text: `${result.contact.name} kişisi Nova Sohbet rehberine eklendi.`,
               time,
               status: 'read',
             },
@@ -1008,8 +1008,8 @@ function App() {
         <div className="profile-bar">
           <button className="avatar self" type="button" onClick={() => setIsEditingProfile(true)}>{user.name.slice(0, 2).toLocaleUpperCase('tr')}</button>
           <div className="app-identity">
-            <span className="sidebar-logo">🐢</span>
-            <span>Kaplumbağa</span>
+            <span className="sidebar-logo">N</span>
+            <span>Nova Sohbet</span>
           </div>
           <div>
             <strong>{user.name}</strong>
@@ -1020,7 +1020,7 @@ function App() {
 
         {isSettingsOpen && (
           <section className="settings-panel">
-            <strong>Kaplumbağa Ayarları</strong>
+            <strong>Nova Sohbet Ayarları</strong>
             <label>
               Dil
               <select value={userLanguage} onChange={(event) => setSettings((current) => ({ ...current, language: event.target.value }))}>
@@ -1183,7 +1183,7 @@ function App() {
         {activeCall && (
           <div className="call-screen">
             <div className="call-card">
-              <div className="turtle-logo call-logo">🐢</div>
+              <div className="nova-logo call-logo">N</div>
               <h2>{activeCall.contact.name}</h2>
               <p>{activeCall.type === 'video' ? 'Görüntülü arama' : 'Sesli arama'} devam ediyor · {activeCall.startedAt}</p>
               {activeCall.error && <p className="call-error">{activeCall.error}</p>}
@@ -1334,10 +1334,10 @@ function LoginScreen({ onLogin, authError }) {
     <main className="login-page">
       <section className="login-card">
         <div className="brand-mark">
-          <span className="turtle-logo">🐢</span>
+          <span className="nova-logo">N</span>
         </div>
-        <h1>Kaplumbağa</h1>
-        <p>Telefon doğrulama hissi veren hızlı, sade ve modern Kaplumbağa sohbet deneyimine giriş yapın.</p>
+        <h1>Nova Sohbet</h1>
+        <p>Telefon doğrulama hissi veren hızlı, sade ve modern Nova Sohbet deneyimine giriş yapın.</p>
 
         <form onSubmit={onLogin} className="login-form">
           <label>

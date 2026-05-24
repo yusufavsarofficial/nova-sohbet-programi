@@ -1,6 +1,6 @@
-# Kaplumbağa
+# Nova Sohbet
 
-WhatsApp tarzı modern sohbet arayüzü olan React ve Electron uygulaması.
+React, Electron, Render API, Netlify yayın ve Android APK hedefleri olan modern sohbet uygulaması.
 
 ## Çalıştırma
 
@@ -9,11 +9,11 @@ npm install
 npm run dev
 ```
 
-Tarayıcıda gösterilen yerel adresi açın.
+Tarayıcıda gösterilen yerel adresi açın. Yerelde API kullanacaksanız ayrı bir terminalde `npm run api` çalıştırın.
 
 ## API Sunucusu
 
-Gerçek kullanıcı, kayıt, giriş, kişi, sohbet ve mesaj API’si için:
+Gerçek kullanıcı, kayıt, giriş, kişi, sohbet, grup, dosya ve mesaj API’si için:
 
 ```powershell
 npm run api
@@ -27,7 +27,7 @@ API varsayılan olarak `http://127.0.0.1:4000` adresinde çalışır.
 
 ## Giriş
 
-Login ekranına herhangi bir ad ve telefon girerek demo sohbete geçebilirsiniz.
+İlk kayıt için `REGISTRATION_KEY` gerekir. Varsayılan geliştirme anahtarı `123456789` değeridir; canlıda bu değeri ortam değişkeniyle değiştirin.
 
 ## Production Notları
 

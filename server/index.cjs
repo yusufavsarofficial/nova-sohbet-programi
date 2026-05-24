@@ -46,13 +46,40 @@ const upload = multer({
   }
 });
 
+function normalizePhone(value) {
+  let phone = String(value || '').trim().replace(/[\s()-]/g, '');
+  if (phone.startsWith('00')) {
+    phone = `+${phone.slice(2)}`;
+  }
+  return phone;
+}
+
+function phoneLookupCandidates(value) {
+  const normalized = normalizePhone(value);
+  const candidates = new Set([String(value || '').trim(), normalized]);
+  if (normalized.startsWith('+')) {
+    candidates.add(normalized.slice(1));
+  } else if (normalized) {
+    candidates.add(`+${normalized}`);
+  }
+  return [...candidates].filter(Boolean);
+}
+
+async function getUserByPhoneInput(value) {
+  for (const candidate of phoneLookupCandidates(value)) {
+    const user = await db.getUserByPhone(candidate);
+    if (user) return user;
+  }
+  return null;
+}
+
 function publicUser(user) {
   return {
     id: user.id,
     name: user.name,
     phone: user.phone,
     language: user.language || 'tr',
-    about: user.about || 'Kaplumbağa kullanıyorum.',
+    about: user.about || 'Nova Sohbet kullanıyorum.',
     avatar: user.avatar || null,
     createdAt: user.created_at || user.createdAt,
     lastSeen: user.last_seen || user.lastSeen,
@@ -105,12 +132,12 @@ function createApp() {
   app.use('/api/', limiter);
 
   app.get('/health', (req, res) => {
-    res.json({ ok: true, app: 'Kaplumbağa', timestamp: Date.now() });
+    res.json({ ok: true, app: 'Nova Sohbet', timestamp: Date.now() });
   });
 
   app.post('/api/auth/register', async (req, res) => {
     const name = String(req.body?.name || '').trim();
-    const phone = String(req.body?.phone || '').trim();
+    const phone = normalizePhone(req.body?.phone);
     const password = String(req.body?.password || '').trim();
     const language = String(req.body?.language || 'tr').trim();
     const key = String(req.body?.key || '').trim();
@@ -123,7 +150,7 @@ function createApp() {
       return res.status(403).json({ ok: false, error: 'Geçersiz kayıt anahtarı.' });
     }
 
-    const existing = await db.getUserByPhone(phone);
+    const existing = await getUserByPhoneInput(phone);
     if (existing) {
       return res.status(409).json({ ok: false, error: 'Bu telefon zaten kayıtlı.' });
     }
@@ -134,7 +161,7 @@ function createApp() {
       phone,
       passwordHash: await bcrypt.hash(password, 12),
       language,
-      about: 'Kaplumbağa kullanıyorum.',
+      about: 'Nova Sohbet kullanıyorum.',
       createdAt: Date.now(),
     };
 
@@ -144,9 +171,9 @@ function createApp() {
   });
 
   app.post('/api/auth/login', async (req, res) => {
-    const phone = String(req.body?.phone || '').trim();
+    const phone = normalizePhone(req.body?.phone);
     const password = String(req.body?.password || '').trim();
-    const user = await db.getUserByPhone(phone);
+    const user = await getUserByPhoneInput(phone);
 
     if (!user || !(await bcrypt.compare(password, user.password_hash || user.passwordHash))) {
       return res.status(401).json({ ok: false, error: 'Telefon veya şifre hatalı.' });
@@ -174,10 +201,10 @@ function createApp() {
   });
 
   app.post('/api/contacts', authMiddleware, async (req, res) => {
-    const phone = String(req.body?.phone || '').trim();
+    const phone = normalizePhone(req.body?.phone);
     const displayName = String(req.body?.displayName || '').trim();
     const owner = await db.getUserById(req.auth.sub);
-    const target = await db.getUserByPhone(phone);
+    const target = await getUserByPhoneInput(phone);
 
     if (!owner) return res.status(404).json({ ok: false, error: 'Kullanıcı bulunamadı.' });
     if (!target) return res.status(404).json({ ok: false, error: 'Bu telefonla kayıtlı kullanıcı yok.' });
@@ -234,7 +261,7 @@ function createApp() {
       id: crypto.randomUUID(),
       conversationId: req.params.conversationId,
       senderId: req.auth.sub,
-      senderName: sender?.name || 'Kaplumbağa Kullanıcısı',
+      senderName: sender?.name || 'Nova Kullanıcısı',
       text,
       attachment,
       createdAt: Date.now(),
@@ -424,7 +451,7 @@ if (require.main === module) {
     await db.initDatabase();
     const { server } = createApp();
     server.listen(PORT, HOST, () => {
-      console.log(`Kaplumbağa API çalışıyor: http://${HOST}:${PORT}`);
+      console.log(`Nova Sohbet API çalışıyor: http://${HOST}:${PORT}`);
       console.log(`Veritabanı: ${db.usePostgres() ? 'PostgreSQL' : 'JSON dosyası'}`);
     });
 

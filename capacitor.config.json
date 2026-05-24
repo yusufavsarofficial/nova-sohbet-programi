@@ -1,6 +1,6 @@
 {
-  "appId": "com.kaplumbaga.app",
-  "appName": "Kaplumbağa",
+  "appId": "com.novasohbet.app",
+  "appName": "Nova Sohbet",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"

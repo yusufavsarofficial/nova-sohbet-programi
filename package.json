@@ -1,5 +1,5 @@
 {
-  "name": "kaplumbaga",
+  "name": "nova-sohbet",
   "main": "desktop/main.cjs",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
     "desktop": "npm run build && electron .",
-    "desktop:dev": "set KAPLUMBAGA_DESKTOP_DEV=1&& electron .",
+    "desktop:dev": "set NOVA_DESKTOP_DEV=1&& electron .",
     "android:sync": "npm run build && npx cap sync android",
     "android:open": "npx cap open android"
   },

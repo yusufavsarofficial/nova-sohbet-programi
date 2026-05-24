@@ -51,9 +51,10 @@ button {
   box-shadow: 0 18px 40px rgba(0, 168, 132, 0.32);
 }
 
-.turtle-logo {
+.nova-logo {
   display: block;
-  font-size: 44px;
+  font-size: 40px;
+  font-weight: 900;
   line-height: 1;
 }
 
@@ -190,7 +191,15 @@ button {
 }
 
 .sidebar-logo {
-  font-size: 20px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #00a884;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
   line-height: 1;
 }
 

@@ -5,7 +5,8 @@ const crypto = require('crypto');
 
 const { Pool } = pg;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
-const DATA_FILE = path.join(DATA_DIR, 'kaplumbaga.json');
+const DATA_FILE = path.join(DATA_DIR, 'nova-sohbet.json');
+const LEGACY_DATA_FILE = path.join(DATA_DIR, 'kaplumbaga.json');
 const DATABASE_URL = process.env.DATABASE_URL;
 
 let pool = null;
@@ -22,6 +23,9 @@ function createInitialState() {
 
 function readState() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(DATA_FILE) && fs.existsSync(LEGACY_DATA_FILE)) {
+    fs.copyFileSync(LEGACY_DATA_FILE, DATA_FILE);
+  }
   if (!fs.existsSync(DATA_FILE)) {
     fs.writeFileSync(DATA_FILE, JSON.stringify(createInitialState(), null, 2));
   }
@@ -68,7 +72,7 @@ async function createTables() {
         language VARCHAR(10) DEFAULT 'tr',
         avatar TEXT,
         last_seen BIGINT,
-        about TEXT DEFAULT 'Kaplumbağa kullanıyorum.',
+        about TEXT DEFAULT 'Nova Sohbet kullanıyorum.',
         created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW()) * 1000
       )
     `);

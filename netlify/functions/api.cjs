@@ -5,10 +5,10 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { connectLambda, getStore } = require('@netlify/blobs');
 
-const STORE_NAME = 'kaplumbaga-api';
+const STORE_NAME = 'nova-sohbet-api';
 const STATE_KEY = 'state';
-const LOCAL_STATE_FILE = path.join(__dirname, '..', '..', 'data', 'netlify-state.json');
-const JWT_SECRET = process.env.JWT_SECRET || 'netlify-kaplumbaga-production-secret';
+const LOCAL_STATE_FILE = process.env.NETLIFY_LOCAL_STATE_FILE || path.join(__dirname, '..', '..', 'data', 'netlify-state.json');
+const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-before-production';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const REGISTRATION_KEY = process.env.REGISTRATION_KEY || '123456789';
 
@@ -47,6 +47,30 @@ function parseBody(event) {
   }
 }
 
+function normalizePhone(value) {
+  let phone = String(value || '').trim().replace(/[\s()-]/g, '');
+  if (phone.startsWith('00')) {
+    phone = `+${phone.slice(2)}`;
+  }
+  return phone;
+}
+
+function phoneLookupCandidates(value) {
+  const normalized = normalizePhone(value);
+  const candidates = new Set([String(value || '').trim(), normalized]);
+  if (normalized.startsWith('+')) {
+    candidates.add(normalized.slice(1));
+  } else if (normalized) {
+    candidates.add(`+${normalized}`);
+  }
+  return [...candidates].filter(Boolean);
+}
+
+function findUserByPhone(state, value) {
+  const candidates = phoneLookupCandidates(value);
+  return state.users.find((user) => candidates.includes(user.phone)) || null;
+}
+
 function getRoute(event) {
   const rawPath = event.path || new URL(event.rawUrl).pathname;
   let route = rawPath
@@ -68,7 +92,7 @@ function publicUser(user) {
     name: user.name,
     phone: user.phone,
     language: user.language || 'tr',
-    about: user.about || 'Kaplumbaga kullaniyorum.',
+    about: user.about || 'Nova Sohbet kullaniyorum.',
     createdAt: user.createdAt,
   };
 }
@@ -147,12 +171,12 @@ exports.handler = async (event) => {
 
   try {
     if (event.httpMethod === 'GET' && route === '/health') {
-      return json(200, { ok: true, app: 'Kaplumbaga', timestamp: Date.now() });
+      return json(200, { ok: true, app: 'Nova Sohbet', timestamp: Date.now() });
     }
 
     if (event.httpMethod === 'POST' && route === '/auth/register') {
       const name = String(body.name || '').trim();
-      const phone = String(body.phone || '').trim();
+      const phone = normalizePhone(body.phone);
       const password = String(body.password || '').trim();
       const language = String(body.language || 'tr').trim();
       const key = String(body.key || '').trim();
@@ -165,7 +189,7 @@ exports.handler = async (event) => {
         return json(403, { ok: false, error: 'Gecersiz kayit anahtari.' });
       }
 
-      if (state.users.some((user) => user.phone === phone)) {
+      if (findUserByPhone(state, phone)) {
         return json(409, { ok: false, error: 'Bu telefon zaten kayitli.' });
       }
 
@@ -175,7 +199,7 @@ exports.handler = async (event) => {
         phone,
         passwordHash: await bcrypt.hash(password, 12),
         language,
-        about: 'Kaplumbaga kullaniyorum.',
+        about: 'Nova Sohbet kullaniyorum.',
         createdAt: Date.now(),
       };
 
@@ -186,9 +210,9 @@ exports.handler = async (event) => {
     }
 
     if (event.httpMethod === 'POST' && route === '/auth/login') {
-      const phone = String(body.phone || '').trim();
+      const phone = normalizePhone(body.phone);
       const password = String(body.password || '').trim();
-      const user = state.users.find((record) => record.phone === phone);
+      const user = findUserByPhone(state, phone);
 
       if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
         return json(401, { ok: false, error: 'Telefon veya sifre hatali.' });
@@ -219,9 +243,9 @@ exports.handler = async (event) => {
       const session = await requireAuth(event, state);
       if (session.error) return session.error;
 
-      const phone = String(body.phone || '').trim();
+      const phone = normalizePhone(body.phone);
       const displayName = String(body.displayName || '').trim();
-      const target = state.users.find((record) => record.phone === phone);
+      const target = findUserByPhone(state, phone);
 
       if (!target) return json(404, { ok: false, error: 'Bu telefonla kayitli kullanici yok.' });
       if (target.id === session.user.id) return json(400, { ok: false, error: 'Kendinizi ekleyemezsiniz.' });
@@ -283,7 +307,7 @@ exports.handler = async (event) => {
           id: crypto.randomUUID(),
           conversationId: conversation.id,
           senderId: session.user.id,
-          senderName: session.user.name || 'Kaplumbaga Kullanicisi',
+          senderName: session.user.name || 'Nova Kullanicisi',
           text,
           attachment,
           createdAt: Date.now(),
