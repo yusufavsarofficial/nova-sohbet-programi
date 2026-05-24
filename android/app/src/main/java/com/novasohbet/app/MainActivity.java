@@ -1,4 +1,4 @@
-package com.kaplumbaga.app;
+package com.novasohbet.app;
 
 import com.getcapacitor.BridgeActivity;
 

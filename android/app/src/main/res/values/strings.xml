@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">Kaplumbağa</string>
     <string name="title_activity_main">Kaplumbağa</string>
-    <string name="package_name">com.kaplumbaga.app</string>
-    <string name="custom_url_scheme">com.kaplumbaga.app</string>
+    <string name="package_name">com.novasohbet.app</string>
+    <string name="custom_url_scheme">com.novasohbet.app</string>
 </resources>

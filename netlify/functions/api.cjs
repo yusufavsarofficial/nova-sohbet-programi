@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { connectLambda, getStore } = require('@netlify/blobs');
 
-const STORE_NAME = 'nova-sohbet-api';
+const STORE_NAME = 'kaplumbaga-api';
 const STATE_KEY = 'state';
 const LOCAL_STATE_FILE = process.env.NETLIFY_LOCAL_STATE_FILE || path.join(__dirname, '..', '..', 'data', 'netlify-state.json');
 const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-before-production';
@@ -92,7 +92,9 @@ function publicUser(user) {
     name: user.name,
     phone: user.phone,
     language: user.language || 'tr',
-    about: user.about || 'Nova Sohbet kullaniyorum.',
+    about: user.about || 'Kaplumbağa kullanıyorum.',
+    avatar: user.avatar || null,
+    lastSeen: user.lastSeen || null,
     createdAt: user.createdAt,
   };
 }
@@ -171,7 +173,7 @@ exports.handler = async (event) => {
 
   try {
     if (event.httpMethod === 'GET' && route === '/health') {
-      return json(200, { ok: true, app: 'Nova Sohbet', timestamp: Date.now() });
+      return json(200, { ok: true, app: 'Kaplumbağa', timestamp: Date.now(), users: state.users.length });
     }
 
     if (event.httpMethod === 'POST' && route === '/auth/register') {
@@ -199,7 +201,7 @@ exports.handler = async (event) => {
         phone,
         passwordHash: await bcrypt.hash(password, 12),
         language,
-        about: 'Nova Sohbet kullaniyorum.',
+        about: 'Kaplumbağa kullanıyorum.',
         createdAt: Date.now(),
       };
 
@@ -307,7 +309,7 @@ exports.handler = async (event) => {
           id: crypto.randomUUID(),
           conversationId: conversation.id,
           senderId: session.user.id,
-          senderName: session.user.name || 'Nova Kullanicisi',
+          senderName: session.user.name || 'Kaplumbağa Kullanıcısı',
           text,
           attachment,
           createdAt: Date.now(),
@@ -324,6 +326,79 @@ exports.handler = async (event) => {
 
         return json(200, { ok: true, message });
       }
+    }
+
+    // === Group conversations ===
+    if (event.httpMethod === 'POST' && route === '/groups') {
+      const session = await requireAuth(event, state);
+      if (session.error) return session.error;
+      const name = String(body.name || '').trim();
+      const participantIds = Array.isArray(body.participantIds) ? body.participantIds : [];
+      if (!name || participantIds.length < 1) {
+        return json(400, { ok: false, error: 'Grup adı ve en az bir katılımcı gerekli.' });
+      }
+      const conversation = {
+        id: crypto.randomUUID(),
+        isGroup: true,
+        groupName: name,
+        createdBy: session.user.id,
+        participants: [session.user.id, ...participantIds.filter((id) => id !== session.user.id)],
+        lastMessage: '',
+        updatedAt: Date.now(),
+        unread: {},
+      };
+      state.conversations.push(conversation);
+      await store.write(state);
+      return json(200, { ok: true, conversation });
+    }
+
+    // === Edit message ===
+    const editMatch = route.match(/^\/messages\/([^/]+)$/);
+    if (editMatch && (event.httpMethod === 'PATCH' || event.httpMethod === 'DELETE')) {
+      const session = await requireAuth(event, state);
+      if (session.error) return session.error;
+      const messageId = editMatch[1];
+      const message = state.messages.find((m) => m.id === messageId);
+      if (!message) return json(404, { ok: false, error: 'Mesaj bulunamadı.' });
+      if (message.senderId !== session.user.id) return json(403, { ok: false, error: 'Sadece kendi mesajınızı düzenleyebilirsiniz.' });
+      if (event.httpMethod === 'DELETE') {
+        state.messages = state.messages.filter((m) => m.id !== messageId);
+        await store.write(state);
+        return json(200, { ok: true });
+      }
+      const newText = String(body.text || '').trim();
+      if (!newText) return json(400, { ok: false, error: 'Boş mesaj kabul edilmez.' });
+      message.text = newText;
+      message.editedAt = Date.now();
+      await store.write(state);
+      return json(200, { ok: true, message });
+    }
+
+    // === Read receipt ===
+    const readMatch = route.match(/^\/conversations\/([^/]+)\/read$/);
+    if (readMatch && event.httpMethod === 'POST') {
+      const session = await requireAuth(event, state);
+      if (session.error) return session.error;
+      const conversation = state.conversations.find((c) => c.id === readMatch[1]);
+      if (conversation) {
+        conversation.unread[session.user.id] = 0;
+        await store.write(state);
+      }
+      return json(200, { ok: true });
+    }
+
+    // === Contacts list ===
+    if (event.httpMethod === 'GET' && route === '/contacts') {
+      const session = await requireAuth(event, state);
+      if (session.error) return session.error;
+      const contacts = state.contacts
+        .filter((c) => c.ownerId === session.user.id)
+        .map((c) => {
+          const target = state.users.find((u) => u.id === c.userId);
+          return target ? { ...publicUser(target), displayName: c.displayName || target.name } : null;
+        })
+        .filter(Boolean);
+      return json(200, { ok: true, contacts });
     }
 
     return json(404, { ok: false, error: 'Endpoint bulunamadi.', route });

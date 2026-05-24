@@ -107,19 +107,27 @@ function authMiddleware(req, res, next) {
 }
 
 
+function parseAllowedOrigins() {
+  const raw = process.env.CORS_ORIGIN || '*';
+  if (raw === '*') return '*';
+  return raw.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
 function createApp() {
   const app = express();
   const server = http.createServer(app);
-  const io = new Server(server, {
-    cors: {
-      origin: process.env.CORS_ORIGIN || '*',
-      methods: ['GET', 'POST', 'PATCH', 'DELETE'],
-    },
-  });
+  const allowedOrigins = parseAllowedOrigins();
+  const corsOptions = {
+    origin: allowedOrigins === '*' ? true : allowedOrigins,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    credentials: false,
+  };
+  const io = new Server(server, { cors: corsOptions });
 
+  app.set('trust proxy', 1);
   app.disable('x-powered-by');
-  app.use(helmet({ contentSecurityPolicy: false }));
-  app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
+  app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+  app.use(cors(corsOptions));
   app.use(express.json({ limit: '10mb' }));
   app.use(morgan('tiny'));
   app.use('/uploads', express.static(UPLOAD_DIR));
@@ -131,8 +139,12 @@ function createApp() {
   });
   app.use('/api/', limiter);
 
+  app.get('/', (req, res) => {
+    res.json({ ok: true, app: 'Kaplumbağa API', version: '1.0.0' });
+  });
+
   app.get('/health', (req, res) => {
-    res.json({ ok: true, app: 'Nova Sohbet', timestamp: Date.now() });
+    res.json({ ok: true, app: 'Kaplumbağa', timestamp: Date.now(), db: db.usePostgres() ? 'postgres' : 'json' });
   });
 
   app.post('/api/auth/register', async (req, res) => {
@@ -451,7 +463,7 @@ if (require.main === module) {
     await db.initDatabase();
     const { server } = createApp();
     server.listen(PORT, HOST, () => {
-      console.log(`Nova Sohbet API çalışıyor: http://${HOST}:${PORT}`);
+      console.log(`Kaplumbağa API çalışıyor: http://${HOST}:${PORT}`);
       console.log(`Veritabanı: ${db.usePostgres() ? 'PostgreSQL' : 'JSON dosyası'}`);
     });
 

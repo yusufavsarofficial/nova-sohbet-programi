@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Bell, FileText, Image, Lock, Mic, MoreVertical, Paperclip, Phone, Plus, Search, Send, Settings, ShieldCheck, Smile, Square, Trash2, UserRound, Video, X } from 'lucide-react';
+import { Archive, ArchiveRestore, Bell, CornerUpLeft, CornerUpRight, FileText, Image, Lock, Mic, Moon, MoreVertical, Paperclip, Phone, Plus, Reply, Search, Send, Settings, ShieldCheck, Smile, Square, Sun, Trash2, UserRound, Video, X } from 'lucide-react';
 import { io } from 'socket.io-client';
 import './styles.css';
 
@@ -29,8 +29,8 @@ const languageNames = {
   zh: '中文', hi: 'हिन्दी', nl: 'Nederlands', pl: 'Polski', uk: 'Українська', el: 'Ελληνικά',
   fa: 'فارسی', vi: 'Tiếng Việt', id: 'Bahasa Indonesia',
 };
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
-const SOCKET_ENABLED = import.meta.env.VITE_SOCKET_ENABLED !== '0';
+const API_BASE_URL = (typeof window !== 'undefined' && window.localStorage.getItem('kaplumbaga:apiUrl')) || import.meta.env.VITE_API_URL || (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' ? window.location.origin : 'http://127.0.0.1:4000');
+const SOCKET_ENABLED = import.meta.env.VITE_SOCKET_ENABLED === '1' || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
 const TRANSLATE_URL = import.meta.env.VITE_TRANSLATE_URL || 'https://translate.googleapis.com/translate_a/single';
 const translationDictionary = {
   'hello': { tr: 'merhaba', es: 'hola' },
@@ -54,12 +54,19 @@ function readStoredValue(key, fallback, legacyKey) {
   }
 }
 
+const APP_VERSION = '2.0.0';
+if (typeof window !== 'undefined' && window.localStorage.getItem('kaplumbaga:version') !== APP_VERSION) {
+  // Clear stale demo/localStorage data when app version changes
+  ['kaplumbaga:contacts', 'kaplumbaga:messages', 'nova:contacts', 'nova:messages'].forEach((k) => window.localStorage.removeItem(k));
+  window.localStorage.setItem('kaplumbaga:version', APP_VERSION);
+}
+
 function App() {
   const [user, setUser] = useState(() => readStoredValue(storageKeys.user, null, legacyStorageKeys.user));
   const [authError, setAuthError] = useState('');
-  const [contactList, setContactList] = useState(() => readStoredValue(storageKeys.contacts, defaultContacts, legacyStorageKeys.contacts));
+  const [contactList, setContactList] = useState([]);
   const [activeContactId, setActiveContactId] = useState(null);
-  const [messages, setMessages] = useState(() => readStoredValue(storageKeys.messages, starterMessages, legacyStorageKeys.messages));
+  const [messages, setMessages] = useState({});
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
   const [typingContactId, setTypingContactId] = useState(null);
@@ -79,7 +86,12 @@ function App() {
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editDraft, setEditDraft] = useState('');
   const [userStatuses, setUserStatuses] = useState({});
-  const [settings, setSettings] = useState(() => readStoredValue(storageKeys.settings, { compactMode: false, soundEnabled: true, language: 'tr', autoTranslate: true }, legacyStorageKeys.settings));
+  const [replyToMessage, setReplyToMessage] = useState(null);
+  const [forwardingMessage, setForwardingMessage] = useState(null);
+  const [archivedContacts, setArchivedContacts] = useState(() => readStoredValue('nova:archived', []));
+  const [showArchived, setShowArchived] = useState(false);
+  const [messageActionId, setMessageActionId] = useState(null);
+  const [settings, setSettings] = useState(() => readStoredValue(storageKeys.settings, { compactMode: false, soundEnabled: true, language: 'tr', autoTranslate: true, darkMode: false, notifications: true }, legacyStorageKeys.settings));
   const userLanguage = settings.language || 'tr';
   const fileInputRef = useRef(null);
   const avatarInputRef = useRef(null);
@@ -116,8 +128,10 @@ function App() {
     return 'çevrimdışı';
   };
   const filteredContacts = useMemo(() => {
-    return contactList.filter((contact) => contact.name.toLocaleLowerCase('tr').includes(search.toLocaleLowerCase('tr')));
-  }, [contactList, search]);
+    return contactList
+      .filter((contact) => showArchived ? archivedContacts.includes(contact.id) : !archivedContacts.includes(contact.id))
+      .filter((contact) => contact.name.toLocaleLowerCase('tr').includes(search.toLocaleLowerCase('tr')));
+  }, [contactList, search, archivedContacts, showArchived]);
   const visibleMessages = useMemo(() => {
     const activeMessages = messages[activeContactId] ?? [];
     const query = messageSearch.trim().toLocaleLowerCase('tr');
@@ -143,6 +157,20 @@ function App() {
   }, [settings]);
 
   useEffect(() => {
+    window.localStorage.setItem('nova:archived', JSON.stringify(archivedContacts));
+  }, [archivedContacts]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = settings.darkMode ? 'dark' : 'light';
+  }, [settings.darkMode]);
+
+  useEffect(() => {
+    if (settings.notifications && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, [settings.notifications]);
+
+  useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
@@ -151,12 +179,16 @@ function App() {
   useEffect(() => {
     if (user?.token) {
       loadConversations(user.token);
+      const interval = setInterval(() => loadConversations(user.token), 8000);
+      return () => clearInterval(interval);
     }
   }, [user?.token]);
 
   useEffect(() => {
     if (user?.token && activeContactId) {
       loadMessages(activeContactId, user.token);
+      const interval = setInterval(() => loadMessages(activeContactId, user.token), 3000);
+      return () => clearInterval(interval);
     }
   }, [user?.token, activeContactId]);
 
@@ -172,18 +204,33 @@ function App() {
       });
 
       socketRef.current.on('message:new', (message) => {
+        const now = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+        const incomingMessage = buildMessage({
+          id: message.id,
+          from: 'them',
+          text: message.text,
+          time: now,
+          status: 'read',
+          attachment: message.attachment,
+          replyTo: message.replyTo || null,
+        });
         if (message.conversationId === activeContactId) {
-          const now = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-          const incomingMessage = buildMessage({
-            id: message.id,
-            from: 'them',
-            text: message.text,
-            time: now,
-            status: 'read',
-            attachment: message.attachment
-          });
           addMessageToConversation(activeContactId, incomingMessage);
-          playNotificationSound();
+        } else {
+          setMessages((current) => ({
+            ...current,
+            [message.conversationId]: [...(current[message.conversationId] ?? []), incomingMessage],
+          }));
+          setContactList((current) => current.map((c) => (
+            c.id === message.conversationId
+              ? { ...c, lastMessage: message.text || '📎 Ek', time: now, unread: (c.unread || 0) + 1 }
+              : c
+          )));
+        }
+        if (settings.soundEnabled) playNotificationSound();
+        if (settings.notifications && 'Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+          const contact = contactList.find((c) => c.id === message.conversationId);
+          new Notification(contact?.name || 'Yeni mesaj', { body: message.text || '📎 Ek dosya', icon: '/icon.png' });
         }
       });
 
@@ -386,7 +433,8 @@ function App() {
     }
 
     const now = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-    const outgoingMessage = buildMessage({ from: 'me', text, time: now, status: 'sent' });
+    const replySnapshot = replyToMessage ? { id: replyToMessage.id, text: replyToMessage.text, from: replyToMessage.from } : null;
+    const outgoingMessage = buildMessage({ from: 'me', text, time: now, status: 'sent', replyTo: replySnapshot });
 
     addMessageToConversation(activeContactId, outgoingMessage);
     setContactList((current) => moveContactToTop(current.map((contact) => (
@@ -395,6 +443,7 @@ function App() {
         : contact
     )), activeContactId));
     setDraft('');
+    setReplyToMessage(null);
     setTypingContactId(activeContactId);
 
     try {
@@ -404,7 +453,7 @@ function App() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${user.token}`,
         },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, replyTo: replySnapshot }),
       });
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || 'Mesaj gönderilemedi.');
@@ -739,7 +788,7 @@ function App() {
             {
               id: Date.now() + 1,
               from: 'them',
-              text: `${result.contact.name} kişisi Nova Sohbet rehberine eklendi.`,
+              text: `${result.contact.name} kişisi Kaplumbağa rehberine eklendi.`,
               time,
               status: 'read',
             },
@@ -814,6 +863,59 @@ function App() {
         ? current.filter(id => id !== contactId)
         : [...current, contactId]
     );
+  }
+
+  function archiveContact(contactId) {
+    setArchivedContacts((current) => current.includes(contactId) ? current.filter((id) => id !== contactId) : [...current, contactId]);
+    setMessageActionId(null);
+  }
+
+  function deleteChat(contactId) {
+    if (!window.confirm('Bu sohbeti tamamen silmek istediğinize emin misiniz?')) return;
+    setContactList((current) => current.filter((c) => c.id !== contactId));
+    setMessages((current) => {
+      const next = { ...current };
+      delete next[contactId];
+      return next;
+    });
+    setArchivedContacts((current) => current.filter((id) => id !== contactId));
+    if (activeContactId === contactId) setActiveContactId(null);
+    setMessageActionId(null);
+  }
+
+  function startReply(message) {
+    setReplyToMessage(message);
+    setForwardingMessage(null);
+    setMessageActionId(null);
+  }
+
+  function startForward(message) {
+    setForwardingMessage(message);
+    setMessageActionId(null);
+  }
+
+  async function forwardMessageTo(targetContactId) {
+    if (!forwardingMessage || !targetContactId) return;
+    const now = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    const text = forwardingMessage.text;
+    const message = buildMessage({ from: 'me', text, time: now, status: 'sent', forwarded: true, attachment: forwardingMessage.attachment || null });
+    addMessageToConversation(targetContactId, message);
+    setContactList((current) => moveContactToTop(current.map((contact) => (
+      contact.id === targetContactId
+        ? { ...contact, lastMessage: text || '📎 İletilen', time: now }
+        : contact
+    )), targetContactId));
+    try {
+      await fetch(`${API_BASE_URL}/api/conversations/${targetContactId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.token}` },
+        body: JSON.stringify({ text, attachment: forwardingMessage.attachment || null, forwarded: true }),
+      });
+    } catch (error) {
+      console.error('İletme hatası:', error);
+    }
+    setForwardingMessage(null);
+    setActiveContactId(targetContactId);
   }
 
   function logout() {
@@ -1008,8 +1110,8 @@ function App() {
         <div className="profile-bar">
           <button className="avatar self" type="button" onClick={() => setIsEditingProfile(true)}>{user.name.slice(0, 2).toLocaleUpperCase('tr')}</button>
           <div className="app-identity">
-            <span className="sidebar-logo">N</span>
-            <span>Nova Sohbet</span>
+            <span className="sidebar-logo">🐢</span>
+            <span>Kaplumbağa</span>
           </div>
           <div>
             <strong>{user.name}</strong>
@@ -1020,7 +1122,7 @@ function App() {
 
         {isSettingsOpen && (
           <section className="settings-panel">
-            <strong>Nova Sohbet Ayarları</strong>
+            <strong>Kaplumbağa Ayarları</strong>
             <label>
               Dil
               <select value={userLanguage} onChange={(event) => setSettings((current) => ({ ...current, language: event.target.value }))}>
@@ -1059,6 +1161,28 @@ function App() {
               <input type="checkbox" checked={settings.soundEnabled} onChange={(event) => setSettings((current) => ({ ...current, soundEnabled: event.target.checked }))} />
               Bildirim sesi
             </label>
+            <label>
+              <input type="checkbox" checked={settings.notifications} onChange={(event) => setSettings((current) => ({ ...current, notifications: event.target.checked }))} />
+              Masaüstü bildirimleri
+            </label>
+            <label>
+              <input type="checkbox" checked={settings.darkMode} onChange={(event) => setSettings((current) => ({ ...current, darkMode: event.target.checked }))} />
+              {settings.darkMode ? <><Moon size={14}/> Karanlık mod</> : <><Sun size={14}/> Aydınlık mod</>}
+            </label>
+            <label>
+              Sunucu (API) URL
+              <input
+                type="url"
+                placeholder="https://kaplumbaga-api.onrender.com"
+                defaultValue={window.localStorage.getItem('kaplumbaga:apiUrl') || ''}
+                onBlur={(e) => {
+                  const v = e.target.value.trim().replace(/\/$/, '');
+                  if (v) window.localStorage.setItem('kaplumbaga:apiUrl', v);
+                  else window.localStorage.removeItem('kaplumbaga:apiUrl');
+                }}
+              />
+            </label>
+            <button type="button" onClick={() => window.location.reload()}>Sunucuyu yeniden bağla</button>
             <button type="button" onClick={resetDemoData}>Demo verileri sıfırla</button>
             <button type="button" onClick={logout}>Çıkış yap</button>
           </section>
@@ -1141,27 +1265,54 @@ function App() {
           </form>
         )}
 
+        <button className="archive-toggle" type="button" onClick={() => setShowArchived((current) => !current)}>
+          {showArchived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
+          {showArchived ? `Aktif sohbetlere dön` : `Arşivlenmiş sohbetler (${archivedContacts.length})`}
+        </button>
+
         <div className="contact-list">
           {filteredContacts.map((contact) => (
-            <button
-              className={`contact-card ${contact.id === activeContactId ? 'active' : ''}`}
-              key={contact.id}
-              onClick={() => selectContact(contact.id)}
-            >
-              <div className="avatar">{contact.avatar}</div>
-              <div className="contact-info">
-                <div className="contact-top">
-                  <strong>{contact.name}</strong>
-                  <span>{contact.time}</span>
+            <div className={`contact-card-wrapper ${contact.id === activeContactId ? 'active' : ''}`} key={contact.id}>
+              <button
+                className="contact-card"
+                onClick={() => forwardingMessage ? forwardMessageTo(contact.id) : selectContact(contact.id)}
+              >
+                <div className="avatar">{contact.avatar}</div>
+                <div className="contact-info">
+                  <div className="contact-top">
+                    <strong>{contact.name}</strong>
+                    <span>{contact.time}</span>
+                  </div>
+                  <div className="contact-bottom">
+                    <span>{contact.lastMessage}</span>
+                    {contact.unread > 0 && <b>{contact.unread}</b>}
+                  </div>
                 </div>
-                <div className="contact-bottom">
-                  <span>{contact.lastMessage}</span>
-                  {contact.unread > 0 && <b>{contact.unread}</b>}
-                </div>
+              </button>
+              <div className="contact-actions">
+                <button type="button" onClick={() => archiveContact(contact.id)} aria-label={archivedContacts.includes(contact.id) ? 'Arşivden çıkar' : 'Arşivle'}>
+                  {archivedContacts.includes(contact.id) ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+                </button>
+                <button type="button" onClick={() => deleteChat(contact.id)} aria-label="Sohbeti sil">
+                  <Trash2 size={15} />
+                </button>
               </div>
-            </button>
+            </div>
           ))}
+          {filteredContacts.length === 0 && (
+            <div className="empty-contacts">
+              {showArchived ? 'Arşivlenmiş sohbet yok.' : 'Henüz sohbet yok. "Yeni Sohbet" ile başlayın.'}
+            </div>
+          )}
         </div>
+
+        {forwardingMessage && (
+          <div className="forward-banner">
+            <CornerUpRight size={16} />
+            <span>Bir kişi seçin: "{forwardingMessage.text?.slice(0, 30)}..."</span>
+            <button type="button" onClick={() => setForwardingMessage(null)} aria-label="İptal"><X size={14} /></button>
+          </div>
+        )}
       </aside>
 
       <section className="chat-panel">
@@ -1183,7 +1334,7 @@ function App() {
         {activeCall && (
           <div className="call-screen">
             <div className="call-card">
-              <div className="nova-logo call-logo">N</div>
+              <div className="turtle-logo call-logo">🐢</div>
               <h2>{activeCall.contact.name}</h2>
               <p>{activeCall.type === 'video' ? 'Görüntülü arama' : 'Sesli arama'} devam ediyor · {activeCall.startedAt}</p>
               {activeCall.error && <p className="call-error">{activeCall.error}</p>}
@@ -1237,6 +1388,16 @@ function App() {
           {visibleMessages.map((message) => (
             <div className={`message-row ${message.from}`} key={message.id}>
               <div className="message-bubble">
+                {message.forwarded && (
+                  <div className="forwarded-badge"><CornerUpRight size={12} /> İletildi</div>
+                )}
+                {message.replyTo && (
+                  <div className="reply-preview-bubble">
+                    <Reply size={12} />
+                    <span className="reply-author">{message.replyTo.from === 'me' ? 'Siz' : activeContact.name}</span>
+                    <span className="reply-text">{message.replyTo.text}</span>
+                  </div>
+                )}
                 {editingMessageId === message.id ? (
                   <div className="edit-mode">
                     <input
@@ -1276,11 +1437,17 @@ function App() {
                 )}
                 <time>
                   {message.time} {message.from === 'me' && <span className={`message-status ${message.status}`}>{message.status === 'read' ? '✓✓' : message.status === 'delivered' ? '✓✓' : '✓'}</span>}
-                  {message.from === 'me' && editingMessageId !== message.id && (
-                    <button className="message-action" onClick={() => startEditingMessage(message)}><Settings size={14} /></button>
-                  )}
-                  {message.from === 'me' && editingMessageId !== message.id && (
-                    <button className="message-action" onClick={() => deleteMessage(message.id)}><Trash2 size={14} /></button>
+                  {editingMessageId !== message.id && (
+                    <>
+                      <button className="message-action" onClick={() => startReply(message)} title="Yanıtla"><CornerUpLeft size={14} /></button>
+                      <button className="message-action" onClick={() => startForward(message)} title="İlet"><CornerUpRight size={14} /></button>
+                      {message.from === 'me' && (
+                        <>
+                          <button className="message-action" onClick={() => startEditingMessage(message)} title="Düzenle"><Settings size={14} /></button>
+                          <button className="message-action" onClick={() => deleteMessage(message.id)} title="Sil"><Trash2 size={14} /></button>
+                        </>
+                      )}
+                    </>
                   )}
                 </time>
               </div>
@@ -1302,6 +1469,17 @@ function App() {
           )}
           <div ref={messagesEndRef} />
         </div>
+
+        {replyToMessage && (
+          <div className="reply-preview-bar">
+            <Reply size={14} />
+            <div className="reply-preview-info">
+              <strong>{replyToMessage.from === 'me' ? 'Siz' : activeContact.name}</strong>
+              <span>{replyToMessage.text}</span>
+            </div>
+            <button type="button" onClick={() => setReplyToMessage(null)} aria-label="İptal"><X size={14} /></button>
+          </div>
+        )}
 
         <form className="composer" onSubmit={sendMessage}>
           <input ref={fileInputRef} className="hidden-file-input" type="file" onChange={handleFileSelected} />
@@ -1334,10 +1512,10 @@ function LoginScreen({ onLogin, authError }) {
     <main className="login-page">
       <section className="login-card">
         <div className="brand-mark">
-          <span className="nova-logo">N</span>
+          <span className="turtle-logo">🐢</span>
         </div>
-        <h1>Nova Sohbet</h1>
-        <p>Telefon doğrulama hissi veren hızlı, sade ve modern Nova Sohbet deneyimine giriş yapın.</p>
+        <h1>Kaplumbağa</h1>
+        <p>Telefon doğrulama hissi veren hızlı, sade ve modern Kaplumbağa sohbet deneyimine giriş yapın.</p>
 
         <form onSubmit={onLogin} className="login-form">
           <label>
