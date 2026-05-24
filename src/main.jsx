@@ -179,7 +179,8 @@ function App() {
   useEffect(() => {
     if (user?.token) {
       loadConversations(user.token);
-      const interval = setInterval(() => loadConversations(user.token), 8000);
+      // Slow polling fallback - Socket.io handles real-time when connected
+      const interval = setInterval(() => loadConversations(user.token), SOCKET_ENABLED ? 30000 : 10000);
       return () => clearInterval(interval);
     }
   }, [user?.token]);
@@ -187,8 +188,11 @@ function App() {
   useEffect(() => {
     if (user?.token && activeContactId) {
       loadMessages(activeContactId, user.token);
-      const interval = setInterval(() => loadMessages(activeContactId, user.token), 3000);
-      return () => clearInterval(interval);
+      // Only poll messages if Socket.io is disabled
+      if (!SOCKET_ENABLED) {
+        const interval = setInterval(() => loadMessages(activeContactId, user.token), 5000);
+        return () => clearInterval(interval);
+      }
     }
   }, [user?.token, activeContactId]);
 

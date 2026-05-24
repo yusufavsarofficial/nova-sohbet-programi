@@ -132,12 +132,23 @@ function createApp() {
   app.use(morgan('tiny'));
   app.use('/uploads', express.static(UPLOAD_DIR));
 
-  const limiter = rateLimit({
+  const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100,
-    message: { ok: false, error: 'Çok fazla istek, lütfen bekleyin.' }
+    max: 30,
+    message: { ok: false, error: 'Çok fazla giriş denemesi.' },
+    standardHeaders: true,
+    legacyHeaders: false,
   });
-  app.use('/api/', limiter);
+  app.use('/api/auth/', authLimiter);
+
+  const generalLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 300,
+    message: { ok: false, error: 'Çok fazla istek, lütfen bekleyin.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use('/api/', generalLimiter);
 
   app.get('/', (req, res) => {
     res.json({ ok: true, app: 'Kaplumbağa API', version: '1.0.0' });
