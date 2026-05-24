@@ -248,11 +248,21 @@ async function getConversations(userId) {
   if (usePostgres) {
     const result = await pool.query(`
       SELECT c.id, c.is_group, c.group_name, c.last_message, c.updated_at,
-             COALESCE(json_agg(json_build_object('user_id', cp.user_id, 'unread', cp.unread)) FILTER (WHERE cp.user_id IS NOT NULL), '[]') as participants
+             (
+               SELECT COALESCE(json_agg(json_build_object('user_id', cp2.user_id, 'unread', cp2.unread)), '[]')
+               FROM conversation_participants cp2 WHERE cp2.conversation_id = c.id
+             ) AS participants,
+             (
+               SELECT row_to_json(u) FROM (
+                 SELECT u2.id, u2.name, u2.phone, u2.language, u2.about, u2.avatar, u2.last_seen
+                 FROM conversation_participants cp3
+                 JOIN users u2 ON u2.id = cp3.user_id
+                 WHERE cp3.conversation_id = c.id AND cp3.user_id <> $1
+                 LIMIT 1
+               ) u
+             ) AS "otherUser"
       FROM conversations c
-      JOIN conversation_participants cp ON c.id = cp.conversation_id
-      WHERE cp.user_id = $1
-      GROUP BY c.id
+      WHERE c.id IN (SELECT conversation_id FROM conversation_participants WHERE user_id = $1)
       ORDER BY c.updated_at DESC
     `, [userId]);
     return result.rows;
@@ -260,10 +270,15 @@ async function getConversations(userId) {
   const state = readState();
   return state.conversations
     .filter(c => c.participants.includes(userId))
-    .map(c => ({
-      ...c,
-      participants: c.participants.map(p => ({ user_id: p, unread: c.unread[p] || 0 }))
-    }))
+    .map(c => {
+      const otherId = c.participants.find(p => p !== userId);
+      const otherUser = otherId ? state.users.find(u => u.id === otherId) : null;
+      return {
+        ...c,
+        participants: c.participants.map(p => ({ user_id: p, unread: (c.unread && c.unread[p]) || 0 })),
+        otherUser: otherUser ? { id: otherUser.id, name: otherUser.name, phone: otherUser.phone, language: otherUser.language, about: otherUser.about, avatar: otherUser.avatar } : null,
+      };
+    })
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
