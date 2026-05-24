@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: nova-sohbet-api
+    env: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: JWT_SECRET
+        generateValue: true
+      - key: REGISTRATION_KEY
+        sync: false
+      - key: CORS_ORIGIN
+        value: "*"

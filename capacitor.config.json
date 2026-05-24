@@ -1,0 +1,11 @@
+{
+  "appId": "com.kaplumbaga.app",
+  "appName": "Kaplumbağa",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
