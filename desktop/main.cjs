@@ -9,7 +9,7 @@ function createWindow() {
     height: 820,
     minWidth: 980,
     minHeight: 640,
-    title: 'Nova Sohbet',
+    title: 'Kaplumbağa',
     backgroundColor: '#071713',
     autoHideMenuBar: true,
     webPreferences: {

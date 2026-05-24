@@ -72,7 +72,7 @@ async function createTables() {
         language VARCHAR(10) DEFAULT 'tr',
         avatar TEXT,
         last_seen BIGINT,
-        about TEXT DEFAULT 'Nova Sohbet kullanıyorum.',
+        about TEXT DEFAULT 'Kaplumbağa kullanıyorum.',
         created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW()) * 1000
       )
     `);
@@ -410,7 +410,7 @@ async function updateMessage(messageId, updates) {
   const message = state.messages.find(m => m.id === messageId);
   if (!message) return null;
   if (updates.text !== undefined) message.text = updates.text;
-  if (updates.edited_at !== undefined) message.editedAt = updates.editedAt;
+  if (updates.edited_at !== undefined) message.editedAt = updates.edited_at;
   writeState(state);
   return message;
 }
@@ -547,6 +547,10 @@ async function deleteConversation(conversationId, userId) {
     return true;
   }
   const state = readState();
+  const conversation = state.conversations.find((c) => c.id === conversationId);
+  if (!conversation || !conversation.participants.includes(userId)) {
+    throw new Error('Yetkisiz silme.');
+  }
   state.conversations = state.conversations.filter((c) => c.id !== conversationId);
   state.messages = state.messages.filter((m) => m.conversationId !== conversationId);
   writeState(state);

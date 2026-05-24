@@ -387,6 +387,21 @@ exports.handler = async (event) => {
       return json(200, { ok: true });
     }
 
+    const deleteConversationMatch = route.match(/^\/conversations\/([^/]+)$/);
+    if (deleteConversationMatch && event.httpMethod === 'DELETE') {
+      const session = await requireAuth(event, state);
+      if (session.error) return session.error;
+      const conversationId = deleteConversationMatch[1];
+      const conversation = state.conversations.find((c) => c.id === conversationId);
+      if (!conversation || !conversation.participants.includes(session.user.id)) {
+        return json(403, { ok: false, error: 'Yetkisiz silme.' });
+      }
+      state.conversations = state.conversations.filter((c) => c.id !== conversationId);
+      state.messages = state.messages.filter((m) => m.conversationId !== conversationId);
+      await store.write(state);
+      return json(200, { ok: true });
+    }
+
     // === Contacts list ===
     if (event.httpMethod === 'GET' && route === '/contacts') {
       const session = await requireAuth(event, state);

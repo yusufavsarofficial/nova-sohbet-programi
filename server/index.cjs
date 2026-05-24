@@ -79,7 +79,7 @@ function publicUser(user) {
     name: user.name,
     phone: user.phone,
     language: user.language || 'tr',
-    about: user.about || 'Nova Sohbet kullanıyorum.',
+    about: user.about || 'Kaplumbağa kullanıyorum.',
     avatar: user.avatar || null,
     createdAt: user.created_at || user.createdAt,
     lastSeen: user.last_seen || user.lastSeen,
@@ -184,7 +184,7 @@ function createApp() {
       phone,
       passwordHash: await bcrypt.hash(password, 12),
       language,
-      about: 'Nova Sohbet kullanıyorum.',
+      about: 'Kaplumbağa kullanıyorum.',
       createdAt: Date.now(),
     };
 

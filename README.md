@@ -1,4 +1,4 @@
-# Nova Sohbet
+# Kaplumbağa
 
 React, Electron, Render API, Netlify yayın ve Android APK hedefleri olan modern sohbet uygulaması.
 
