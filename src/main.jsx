@@ -754,6 +754,8 @@ function App() {
     const phone = formData.get('phone').trim();
 
     if (!name || !phone) {
+      setCallBanner('Ad ve telefon gerekli.');
+      window.setTimeout(() => setCallBanner(''), 3000);
       return;
     }
 
@@ -767,6 +769,11 @@ function App() {
         body: JSON.stringify({ phone, displayName: name })
       });
       const result = await response.json();
+      if (!result.ok) {
+        setCallBanner(result.error || 'Kişi eklenemedi.');
+        window.setTimeout(() => setCallBanner(''), 4000);
+        return;
+      }
       if (result.ok) {
         const id = result.conversation.id;
         const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
@@ -870,8 +877,16 @@ function App() {
     setMessageActionId(null);
   }
 
-  function deleteChat(contactId) {
+  async function deleteChat(contactId) {
     if (!window.confirm('Bu sohbeti tamamen silmek istediğinize emin misiniz?')) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/conversations/${contactId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${user.token}` },
+      });
+    } catch (e) {
+      console.error('Sohbet silme hatası:', e);
+    }
     setContactList((current) => current.filter((c) => c.id !== contactId));
     setMessages((current) => {
       const next = { ...current };

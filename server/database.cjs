@@ -536,6 +536,23 @@ async function closeDatabase() {
   }
 }
 
+async function deleteConversation(conversationId, userId) {
+  if (usePostgres) {
+    // Verify user is participant
+    const check = await pool.query('SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2', [conversationId, userId]);
+    if (check.rows.length === 0) throw new Error('Yetkisiz silme.');
+    await pool.query('DELETE FROM messages WHERE conversation_id = $1', [conversationId]);
+    await pool.query('DELETE FROM conversation_participants WHERE conversation_id = $1', [conversationId]);
+    await pool.query('DELETE FROM conversations WHERE id = $1', [conversationId]);
+    return true;
+  }
+  const state = readState();
+  state.conversations = state.conversations.filter((c) => c.id !== conversationId);
+  state.messages = state.messages.filter((m) => m.conversationId !== conversationId);
+  writeState(state);
+  return true;
+}
+
 module.exports = {
   initDatabase,
   getUserByPhone,
@@ -551,6 +568,7 @@ module.exports = {
   createMessage,
   updateMessage,
   deleteMessage,
+  deleteConversation,
   markAsRead,
   createGroupConversation,
   addParticipantToGroup,

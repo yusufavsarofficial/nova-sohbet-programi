@@ -283,7 +283,26 @@ function createApp() {
     await db.createMessage(message);
 
     io.to(`conversation:${req.params.conversationId}`).emit('message:new', message);
+    // Also notify all participants individually so they update conversation list
+    try {
+      const participants = await db.getGroupParticipants(req.params.conversationId);
+      participants.forEach((pid) => {
+        if (pid !== req.auth.sub) {
+          io.to(`user:${pid}`).emit('message:new', message);
+        }
+      });
+    } catch (e) { /* ignore */ }
     res.json({ ok: true, message });
+  });
+
+  app.delete('/api/conversations/:conversationId', authMiddleware, async (req, res) => {
+    try {
+      await db.deleteConversation(req.params.conversationId, req.auth.sub);
+      io.to(`conversation:${req.params.conversationId}`).emit('conversation:deleted', { conversationId: req.params.conversationId });
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
   });
 
   app.patch('/api/messages/:messageId', authMiddleware, async (req, res) => {
@@ -409,6 +428,7 @@ function createApp() {
 
   io.on('connection', (socket) => {
     const userId = socket.data.auth.sub;
+    socket.join(`user:${userId}`);
     
     socket.on('conversation:join', async ({ conversationId }) => {
       const conversations = await db.getConversations(socket.data.auth.sub);
@@ -444,14 +464,29 @@ function createApp() {
       });
     });
 
-    socket.on('call:signal', ({ conversationId, type, payload }) => {
-      socket.to(`conversation:${conversationId}`).emit('call:signal', {
+    socket.on('call:signal', async ({ conversationId, type, payload }) => {
+      const data = {
         conversationId,
         from: socket.data.auth.sub,
         type,
         payload,
         createdAt: Date.now(),
-      });
+      };
+      // Send to conversation room (active participants)
+      socket.to(`conversation:${conversationId}`).emit('call:signal', data);
+      // Also notify all participants on their personal channel (for incoming call UI)
+      try {
+        const participants = await db.getGroupParticipants(conversationId);
+        participants.forEach((pid) => {
+          if (pid !== socket.data.auth.sub) {
+            io.to(`user:${pid}`).emit('call:signal', data);
+          }
+        });
+      } catch (e) { /* ignore */ }
+    });
+
+    socket.on('call:end', ({ conversationId }) => {
+      socket.to(`conversation:${conversationId}`).emit('call:end', { from: socket.data.auth.sub, conversationId });
     });
   });
 
