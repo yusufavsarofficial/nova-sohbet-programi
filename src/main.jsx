@@ -31,7 +31,9 @@ const languageNames = {
   zh: '中文', hi: 'हिन्दी', nl: 'Nederlands', pl: 'Polski', uk: 'Українська', el: 'Ελληνικά',
   fa: 'فارسی', vi: 'Tiếng Việt', id: 'Bahasa Indonesia',
 };
-const PRODUCTION_API_URL = 'https://nova-sohbet-api.onrender.com';
+const LOCAL_API_URL = 'http://127.0.0.1:4000';
+const PRODUCTION_API_URL = 'https://kaplumbaga-api.onrender.com';
+const CONNECTION_ERROR_MESSAGE = 'Backend API’ye bağlanılamadı. API çalışıyor mu ve adres doğru mu?';
 
 function normalizeApiUrl(value) {
   return String(value || '').trim().replace(/\/+$/, '');
@@ -41,12 +43,46 @@ function isLocalHost(hostname) {
   return hostname === 'localhost' || hostname === '127.0.0.1';
 }
 
-function getDefaultApiUrl() {
-  const configuredUrl = normalizeApiUrl(import.meta.env.VITE_API_URL);
-  if (configuredUrl) return configuredUrl;
-  if (typeof window !== 'undefined' && isLocalHost(window.location.hostname)) {
-    return 'http://127.0.0.1:4000';
+function getApiUrlIssue(value) {
+  const url = normalizeApiUrl(value);
+  if (!url) return 'empty';
+
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return 'invalid';
   }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) return 'invalid';
+  if (parsed.hostname === '0.0.0.0') return 'wildcard-host';
+
+  if (typeof window !== 'undefined') {
+    const isHostedPage = !isLocalHost(window.location.hostname);
+    const pointsToPage = url === normalizeApiUrl(window.location.origin);
+    const pointsToLocalApiFromLive = isHostedPage && isLocalHost(parsed.hostname);
+
+    if (pointsToPage) return 'page-origin';
+    if (pointsToLocalApiFromLive) return 'live-to-local';
+  }
+
+  if (url.includes('nova-sohbet-api.onrender.com')) return 'old-render-slug';
+
+  return '';
+}
+
+function isSafeApiUrl(value) {
+  return !getApiUrlIssue(value);
+}
+
+function getDefaultApiUrl() {
+  if (typeof window !== 'undefined' && isLocalHost(window.location.hostname)) {
+    return LOCAL_API_URL;
+  }
+
+  const configuredUrl = normalizeApiUrl(import.meta.env.VITE_API_URL);
+  if (isSafeApiUrl(configuredUrl)) return configuredUrl;
+
   return PRODUCTION_API_URL;
 }
 
@@ -55,12 +91,7 @@ function getStoredApiUrl() {
   const storedUrl = normalizeApiUrl(window.localStorage.getItem('kaplumbaga:apiUrl'));
   if (!storedUrl) return '';
 
-  const isHostedPage = !isLocalHost(window.location.hostname);
-  const pointsToPage = storedUrl === normalizeApiUrl(window.location.origin);
-  const pointsToOldRenderSlug = storedUrl.includes('kaplumbaga-api.onrender.com');
-  const pointsToLocalApiFromLive = isHostedPage && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(storedUrl);
-
-  if (pointsToPage || pointsToOldRenderSlug || pointsToLocalApiFromLive) {
+  if (!isSafeApiUrl(storedUrl)) {
     window.localStorage.removeItem('kaplumbaga:apiUrl');
     return '';
   }
@@ -70,10 +101,41 @@ function getStoredApiUrl() {
 
 const API_BASE_URL = getStoredApiUrl() || getDefaultApiUrl();
 const SOCKET_ENABLED = (import.meta.env.VITE_SOCKET_ENABLED === '1' || (typeof window !== 'undefined' && isLocalHost(window.location.hostname))) && !API_BASE_URL.includes('netlify.app');
+
+function getIceServers() {
+  const iceServers = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+  ];
+  const turnUrls = String(import.meta.env.VITE_TURN_URL || '')
+    .split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
+
+  if (turnUrls.length > 0) {
+    iceServers.push({
+      urls: turnUrls,
+      username: import.meta.env.VITE_TURN_USERNAME || undefined,
+      credential: import.meta.env.VITE_TURN_CREDENTIAL || undefined,
+    });
+  }
+
+  return iceServers;
+}
+
+async function apiFetch(path, options) {
+  try {
+    return await fetch(`${API_BASE_URL}${path}`, options);
+  } catch (error) {
+    throw new Error(error instanceof TypeError ? CONNECTION_ERROR_MESSAGE : error.message || CONNECTION_ERROR_MESSAGE);
+  }
+}
+
 async function translateText(text, from, to, token) {
   if (!text || !token) return text;
   try {
-    const res = await fetch(`${API_BASE_URL}/api/translate`, {
+    const res = await apiFetch('/api/translate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ text, from, to }),
@@ -102,6 +164,32 @@ function readStoredValue(key, fallback, legacyKey) {
   }
 }
 
+function clearStoredAuth() {
+  window.localStorage.removeItem(storageKeys.user);
+  window.localStorage.removeItem(legacyStorageKeys.user);
+}
+
+function normalizeAuthUser(result, verifiedAt) {
+  if (!result?.token || !result?.user?.id) {
+    throw new Error('Oturum bilgisi alınamadı.');
+  }
+  return {
+    ...result.user,
+    contact: result.user.phone,
+    token: result.token,
+    verifiedAt,
+  };
+}
+
+function readStoredAuthUser() {
+  const storedUser = readStoredValue(storageKeys.user, null, legacyStorageKeys.user);
+  if (!storedUser?.token || !storedUser?.id) {
+    clearStoredAuth();
+    return null;
+  }
+  return storedUser;
+}
+
 const APP_VERSION = '2.1.0';
 if (typeof window !== 'undefined' && window.localStorage.getItem('kaplumbaga:version') !== APP_VERSION) {
   // Clear stale local cache when the live API contract changes.
@@ -115,7 +203,7 @@ function appendUniqueMessage(items, message) {
 }
 
 function App() {
-  const [user, setUser] = useState(() => readStoredValue(storageKeys.user, null, legacyStorageKeys.user));
+  const [user, setUser] = useState(readStoredAuthUser);
   const [authError, setAuthError] = useState('');
   const [contactList, setContactList] = useState([]);
   const [activeContactId, setActiveContactId] = useState(null);
@@ -147,6 +235,7 @@ function App() {
   const [messageActionId, setMessageActionId] = useState(null);
   const [settings, setSettings] = useState(() => readStoredValue(storageKeys.settings, { compactMode: false, soundEnabled: true, language: 'tr', autoTranslate: true, darkMode: false, notifications: true }, legacyStorageKeys.settings));
   const userLanguage = settings.language || 'tr';
+  const currentUserName = user?.name || 'Kaplumbağa';
   const fileInputRef = useRef(null);
   const avatarInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -157,6 +246,7 @@ function App() {
   const lastOfferRef = useRef('');
   const socketRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const seenSocketMessageIdsRef = useRef(new Set());
 
   const activeContact = contactList.find((contact) => contact.id === activeContactId) ?? contactList[0] ?? {
     id: null,
@@ -198,6 +288,9 @@ function App() {
   useEffect(() => {
     if (user) {
       window.localStorage.setItem(storageKeys.user, JSON.stringify(user));
+      window.localStorage.removeItem(legacyStorageKeys.user);
+    } else {
+      clearStoredAuth();
     }
   }, [user]);
 
@@ -231,24 +324,31 @@ function App() {
     if (!user?.token) return;
 
     let cancelled = false;
-    fetch(`${API_BASE_URL}/api/me`, {
+    apiFetch('/api/me', {
       headers: { Authorization: `Bearer ${user.token}` },
     })
       .then(async (response) => {
-        if (response.ok) return null;
-        if (response.status === 401 || response.status === 404) {
-          return 'Oturum yenilendi. Lütfen tekrar giriş yapın.';
+        const result = await response.json().catch(() => ({}));
+        if (response.ok && result.ok && result.user) {
+          if (cancelled) return null;
+          setUser((current) => current?.token === user.token ? { ...result.user, contact: result.user.phone, token: current.token, verifiedAt: current.verifiedAt } : current);
+          return null;
         }
-        return null;
+        if (response.status === 401 || response.status === 404) {
+          return result.error || 'Oturum yenilendi. Lütfen tekrar giriş yapın.';
+        }
+        return result.error || null;
       })
       .then((message) => {
         if (cancelled || !message) return;
-        window.localStorage.removeItem(storageKeys.user);
-        window.localStorage.removeItem(legacyStorageKeys.user);
+        clearStoredAuth();
         setUser(null);
         setAuthError(message);
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (cancelled) return;
+        setAuthError(error.message || CONNECTION_ERROR_MESSAGE);
+      });
 
     return () => {
       cancelled = true;
@@ -288,11 +388,11 @@ function App() {
         transports: ['websocket']
       });
 
-      socketRef.current.on('connect', () => {
-        console.log('Socket bağlantısı kuruldu');
-      });
+      socketRef.current.on('connect', () => {});
 
       socketRef.current.on('message:new', (message) => {
+        if (message.id && seenSocketMessageIdsRef.current.has(message.id)) return;
+        if (message.id) seenSocketMessageIdsRef.current.add(message.id);
         if ((message.senderId || message.sender_id) === user?.id) return;
         const now = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
         const incomingMessage = buildMessage({
@@ -486,7 +586,7 @@ function App() {
     if (!token) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/conversations`, {
+      const response = await apiFetch('/api/conversations', {
         headers: { Authorization: `Bearer ${token}` },
       });
       const result = await response.json();
@@ -504,7 +604,7 @@ function App() {
     if (!conversationId || !token) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/conversations/${conversationId}/messages`, {
+      const response = await apiFetch(`/api/conversations/${conversationId}/messages`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const result = await response.json();
@@ -523,39 +623,46 @@ function App() {
     event.preventDefault();
     setAuthError('');
     const formData = new FormData(event.currentTarget);
-    const name = formData.get('name').trim();
-    const contact = formData.get('contact').trim();
-    const password = formData.get('password').trim();
-    const key = formData.get('key')?.trim() || '';
+    const name = formData.get('name')?.trim() || '';
+    const contact = formData.get('contact')?.trim() || '';
+    const password = formData.get('password')?.trim() || '';
 
-    if (!name || !contact || password.length < 6) {
-      setAuthError('Ad, telefon ve en az 6 karakter şifre gerekli.');
+    if (!contact) {
+      setAuthError('Telefon gerekli.');
+      return;
+    }
+    if (password.length < 6) {
+      setAuthError('Şifre en az 6 karakter olmalı.');
       return;
     }
 
     const verifiedAt = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
     try {
-      let response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      let response = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: contact, password }),
       });
 
-      if (response.status === 401) {
-        response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+      if (response.status === 404) {
+        if (!name) {
+          setAuthError('Ad gerekli. Kayıt olmak için adınızı girin.');
+          return;
+        }
+        response = await apiFetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, phone: contact, password, language: userLanguage, key }),
+          body: JSON.stringify({ name, phone: contact, password, language: userLanguage }),
         });
       }
 
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || 'Giriş başarısız.');
 
-      setUser({ ...result.user, contact: result.user.phone, token: result.token, verifiedAt });
+      setUser(normalizeAuthUser(result, verifiedAt));
     } catch (error) {
-      setAuthError(error.message || 'Canli API baglantisi kurulamadi. Lutfen tekrar deneyin.');
+      setAuthError(error.message || CONNECTION_ERROR_MESSAGE);
     }
   }
 
@@ -569,7 +676,7 @@ function App() {
     
     if (socketRef.current && user?.token) {
       socketRef.current.emit('conversation:join', { conversationId: contactId });
-      fetch(`${API_BASE_URL}/api/conversations/${contactId}/read`, {
+      apiFetch(`/api/conversations/${contactId}/read`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${user.token}` }
       }).catch(console.error);
@@ -578,9 +685,15 @@ function App() {
 
   async function sendMessage(event) {
     event.preventDefault();
+    if (!activeContactId) {
+      setCallBanner('Lütfen önce bir sohbet seçin.');
+      window.setTimeout(() => setCallBanner(''), 2500);
+      return;
+    }
     const text = draft.trim();
-
-    if (!text || !activeContactId) {
+    if (!text) {
+      setCallBanner('Boş mesaj gönderilemez.');
+      window.setTimeout(() => setCallBanner(''), 2000);
       return;
     }
 
@@ -601,7 +714,7 @@ function App() {
     socketRef.current?.emit('typing', { conversationId: activeContactId, isTyping: false });
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/conversations/${activeContactId}/messages`, {
+      const response = await apiFetch(`/api/conversations/${activeContactId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -669,7 +782,7 @@ function App() {
       const formData = new FormData();
       formData.append('file', file);
       
-      const response = await fetch(`${API_BASE_URL}/api/upload`, {
+      const response = await apiFetch('/api/upload', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${user.token}` },
         body: formData
@@ -695,7 +808,7 @@ function App() {
       });
 
       addMessageToConversation(activeContactId, message);
-      const messageResponse = await fetch(`${API_BASE_URL}/api/conversations/${activeContactId}/messages`, {
+      const messageResponse = await apiFetch(`/api/conversations/${activeContactId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -717,8 +830,8 @@ function App() {
       )), activeContactId));
     } catch (error) {
       console.error('Dosya yükleme hatası:', error);
-      setCallBanner('Dosya yüklenemedi.');
-      window.setTimeout(() => setCallBanner(''), 2200);
+      setCallBanner(error.message || 'Dosya yüklenemedi.');
+      window.setTimeout(() => setCallBanner(''), 3500);
     }
     event.target.value = '';
   }
@@ -729,7 +842,7 @@ function App() {
     const formData = new FormData();
     formData.append('file', new File([blob], fileName, { type: blob.type || 'audio/webm' }));
 
-    const uploadResponse = await fetch(`${API_BASE_URL}/api/upload`, {
+    const uploadResponse = await apiFetch('/api/upload', {
       method: 'POST',
       headers: { Authorization: `Bearer ${user.token}` },
       body: formData,
@@ -747,7 +860,7 @@ function App() {
     const localMessage = buildMessage({ from: 'me', text, time: now, status: 'sent', attachment });
     addMessageToConversation(activeContactId, localMessage);
 
-    const messageResponse = await fetch(`${API_BASE_URL}/api/conversations/${activeContactId}/messages`, {
+    const messageResponse = await apiFetch(`/api/conversations/${activeContactId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.token}` },
       body: JSON.stringify({ text, attachment }),
@@ -799,11 +912,7 @@ function App() {
     if (clearPending) pendingIceCandidatesRef.current = [];
 
     const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-      ],
+      iceServers: getIceServers(),
     });
 
     peerConnectionRef.current = pc;
@@ -866,9 +975,13 @@ function App() {
   }
 
   async function startCall(type) {
-    if (!activeContactId) return;
-    if (!socketRef.current) {
-      setCallBanner('Canlı arama bağlantısı kurulamadı. Sayfayı yenileyin.');
+    if (!activeContactId) {
+      setCallBanner('Lütfen önce bir sohbet seçin.');
+      window.setTimeout(() => setCallBanner(''), 2500);
+      return;
+    }
+    if (!socketRef.current?.connected) {
+      setCallBanner('Canlı bağlantı yok, arama başlatılamaz.');
       window.setTimeout(() => setCallBanner(''), 3500);
       return;
     }
@@ -1075,7 +1188,7 @@ function App() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/me`, {
+      const response = await apiFetch('/api/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.token}` },
         body: JSON.stringify({ name, about, language: userLanguage }),
@@ -1102,7 +1215,7 @@ function App() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/contacts`, {
+      const response = await apiFetch('/api/contacts', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1110,27 +1223,24 @@ function App() {
         },
         body: JSON.stringify({ phone, displayName: name })
       });
-      const result = await response.json();
-      if (!result.ok) {
-        setCallBanner(result.error || 'Kişi eklenemedi.');
-        window.setTimeout(() => setCallBanner(''), 4000);
-        return;
-      }
-      if (result.ok) {
-        const id = result.conversation.id;
-        const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-        const newContact = {
-          id,
-          userId: result.contact.id,
-          name: result.contact.displayName || result.contact.name,
-          avatar: buildAvatar(result.contact.name),
-          status: 'çevrimiçi',
-          lastMessage: 'Yeni sohbet başlatıldı.',
-          time,
-          unread: 0,
-        };
+      const result = await readJsonResponse(response, 'Kişi eklenemedi.');
+      const id = result.conversation?.id;
+      if (!id) throw new Error('Sohbet oluşturulamadı.');
 
-        setContactList((current) => [newContact, ...current.filter((contact) => contact.id !== id)]);
+      const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+      const newContact = {
+        id,
+        userId: result.contact.id,
+        name: result.contact.displayName || result.contact.name,
+        avatar: buildAvatar(result.contact.name),
+        status: 'çevrimiçi',
+        lastMessage: 'Yeni sohbet başlatıldı.',
+        time,
+        unread: 0,
+      };
+
+      setContactList((current) => [newContact, ...current.filter((contact) => contact.id !== id)]);
+      if (!result.alreadyExists) {
         setMessages((current) => ({
           ...current,
           [id]: [
@@ -1143,10 +1253,14 @@ function App() {
             },
           ],
         }));
-        setActiveContactId(id);
-        loadMessages(id);
-        setIsAddingContact(false);
-        setSearch('');
+      }
+      setActiveContactId(id);
+      loadMessages(id);
+      setIsAddingContact(false);
+      setSearch('');
+      if (result.alreadyExists) {
+        setCallBanner('Bu kişi zaten ekli. Mevcut sohbet açıldı.');
+        window.setTimeout(() => setCallBanner(''), 3000);
       }
     } catch (error) {
       console.error('Kişi ekleme hatası:', error);
@@ -1160,10 +1274,19 @@ function App() {
     const participantIds = selectedContacts
       .map((contactId) => contactList.find((contact) => contact.id === contactId)?.userId)
       .filter(Boolean);
-    if (!groupName.trim() || participantIds.length < 1) return;
+    if (!groupName.trim()) {
+      setCallBanner('Grup adı gerekli.');
+      window.setTimeout(() => setCallBanner(''), 3000);
+      return;
+    }
+    if (participantIds.length < 2) {
+      setCallBanner('Grup için en az 2 katılımcı seçin.');
+      window.setTimeout(() => setCallBanner(''), 3000);
+      return;
+    }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/groups`, {
+      const response = await apiFetch('/api/groups', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1172,6 +1295,7 @@ function App() {
         body: JSON.stringify({ name: groupName.trim(), participantIds })
       });
       const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'Grup oluşturulamadı.');
       if (result.ok) {
         const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
         const newGroup = {
@@ -1205,6 +1329,8 @@ function App() {
       }
     } catch (error) {
       console.error('Grup oluşturma hatası:', error);
+      setCallBanner(error.message || 'Grup oluşturulamadı.');
+      window.setTimeout(() => setCallBanner(''), 3000);
     }
   }
 
@@ -1224,7 +1350,7 @@ function App() {
   async function deleteChat(contactId) {
     if (!window.confirm('Bu sohbeti tamamen silmek istediğinize emin misiniz?')) return;
     try {
-      await fetch(`${API_BASE_URL}/api/conversations/${contactId}`, {
+      await apiFetch(`/api/conversations/${contactId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${user.token}` },
       });
@@ -1265,7 +1391,7 @@ function App() {
         : contact
     )), targetContactId));
     try {
-      const response = await fetch(`${API_BASE_URL}/api/conversations/${targetContactId}/messages`, {
+      const response = await apiFetch(`/api/conversations/${targetContactId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.token}` },
         body: JSON.stringify({ text, attachment: forwardingMessage.attachment || null, forwarded: true }),
@@ -1293,8 +1419,8 @@ function App() {
   }
 
   function logout() {
-    window.localStorage.removeItem(storageKeys.user);
-    window.localStorage.removeItem(legacyStorageKeys.user);
+    clearStoredAuth();
+    setAuthError('');
     setUser(null);
     setIsEditingProfile(false);
   }
@@ -1312,7 +1438,7 @@ function App() {
 
   async function deleteMessage(messageId) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/messages/${messageId}`, {
+      const response = await apiFetch(`/api/messages/${messageId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${user.token}` }
       });
@@ -1340,7 +1466,7 @@ function App() {
   async function saveEdit() {
     if (!editDraft.trim()) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/messages/${editingMessageId}`, {
+      const response = await apiFetch(`/api/messages/${editingMessageId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -1468,13 +1594,13 @@ function App() {
     <main className={`app-shell ${settings.compactMode ? 'compact-mode' : ''}`}>
       <aside className="sidebar">
         <div className="profile-bar">
-          <button className="avatar self" type="button" onClick={() => setIsEditingProfile(true)}>{user.name.slice(0, 2).toLocaleUpperCase('tr')}</button>
+          <button className="avatar self" type="button" onClick={() => setIsEditingProfile(true)}>{currentUserName.slice(0, 2).toLocaleUpperCase('tr')}</button>
           <div className="app-identity">
             <span className="sidebar-logo">🐢</span>
             <span>Kaplumbağa</span>
           </div>
           <div>
-            <strong>{user.name}</strong>
+            <strong>{currentUserName}</strong>
             <span>{user.about || `Doğrulandı: ${user.verifiedAt}`}</span>
           </div>
           <button className="menu-button" type="button" onClick={() => setIsSettingsOpen((current) => !current)} aria-label="Ayarlar"><Settings size={21} /></button>
@@ -1537,8 +1663,18 @@ function App() {
                 defaultValue={window.localStorage.getItem('kaplumbaga:apiUrl') || ''}
                 onBlur={(e) => {
                   const v = e.target.value.trim().replace(/\/$/, '');
-                  if (v) window.localStorage.setItem('kaplumbaga:apiUrl', v);
-                  else window.localStorage.removeItem('kaplumbaga:apiUrl');
+                  if (!v) {
+                    window.localStorage.removeItem('kaplumbaga:apiUrl');
+                    return;
+                  }
+                  if (!isSafeApiUrl(v)) {
+                    window.localStorage.removeItem('kaplumbaga:apiUrl');
+                    e.target.value = '';
+                    setCallBanner(CONNECTION_ERROR_MESSAGE);
+                    window.setTimeout(() => setCallBanner(''), 3500);
+                    return;
+                  }
+                  window.localStorage.setItem('kaplumbaga:apiUrl', normalizeApiUrl(v));
                 }}
               />
             </label>
@@ -1552,7 +1688,7 @@ function App() {
           <form className="profile-editor" onSubmit={saveProfile}>
             <label>
               <span>Profil adı</span>
-              <input name="name" defaultValue={user.name} />
+              <input name="name" defaultValue={currentUserName} />
             </label>
             <label>
               <span>Hakkımda</span>

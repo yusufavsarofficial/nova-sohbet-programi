@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+def releaseKeystorePath = System.getenv("KAPLUMBAGA_KEYSTORE_PATH") ?: project.findProperty("KAPLUMBAGA_KEYSTORE_PATH")
+def releaseStorePassword = System.getenv("KAPLUMBAGA_KEYSTORE_PASSWORD") ?: project.findProperty("KAPLUMBAGA_KEYSTORE_PASSWORD")
+def releaseKeyAlias = System.getenv("KAPLUMBAGA_KEY_ALIAS") ?: project.findProperty("KAPLUMBAGA_KEY_ALIAS")
+def releaseKeyPassword = System.getenv("KAPLUMBAGA_KEY_PASSWORD") ?: project.findProperty("KAPLUMBAGA_KEY_PASSWORD")
+def hasReleaseSigning = releaseKeystorePath && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
+
 android {
     namespace = "com.novasohbet.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +22,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseKeystorePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

@@ -313,7 +313,7 @@ async function findOrCreateConversation(userA, userB) {
       const conversation = convResult.rows[0];
       
       await client.query(
-        'INSERT INTO conversation_participants (conversation_id, user_id) VALUES ($1, $2), ($1, $3)',
+        'INSERT INTO conversation_participants (conversation_id, user_id) VALUES ($1, $2), ($1, $3) ON CONFLICT DO NOTHING',
         [conversation.id, userA, userB]
       );
       
@@ -484,10 +484,10 @@ async function createGroupConversation(name, createdBy, participantIds) {
       );
       const conversation = convResult.rows[0];
       
-      const allParticipants = [createdBy, ...participantIds];
+      const allParticipants = [...new Set([createdBy, ...participantIds])];
       for (const userId of allParticipants) {
         await client.query(
-          'INSERT INTO conversation_participants (conversation_id, user_id) VALUES ($1, $2)',
+          'INSERT INTO conversation_participants (conversation_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
           [conversation.id, userId]
         );
       }
@@ -507,7 +507,7 @@ async function createGroupConversation(name, createdBy, participantIds) {
     isGroup: true,
     groupName: name,
     createdBy,
-    participants: [createdBy, ...participantIds],
+    participants: [...new Set([createdBy, ...participantIds])],
     lastMessage: '',
     updatedAt: Date.now(),
     unread: {}
