@@ -5,8 +5,8 @@ const crypto = require('crypto');
 
 const { Pool } = pg;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
-const DATA_FILE = path.join(DATA_DIR, 'nova-sohbet.json');
-const LEGACY_DATA_FILE = path.join(DATA_DIR, 'kaplumbaga.json');
+const DATA_FILE = path.join(DATA_DIR, 'kaplumbaga.json');
+const LEGACY_DATA_FILE = path.join(DATA_DIR, 'nova-sohbet.json');
 const DATABASE_URL = process.env.DATABASE_URL;
 
 let pool = null;
@@ -122,11 +122,18 @@ async function createTables() {
         sender_name VARCHAR(255),
         text TEXT,
         attachment JSONB,
+        reply_to JSONB,
+        forwarded BOOLEAN DEFAULT FALSE,
         status VARCHAR(20) DEFAULT 'sent',
         created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW()) * 1000,
         deleted_at BIGINT,
         edited_at BIGINT
       )
+    `);
+
+    await client.query(`
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to JSONB;
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS forwarded BOOLEAN DEFAULT FALSE;
     `);
 
     await client.query(`
@@ -355,9 +362,20 @@ async function getMessages(conversationId) {
 async function createMessage(message) {
   if (usePostgres) {
     const result = await pool.query(
-      `INSERT INTO messages (id, conversation_id, sender_id, sender_name, text, attachment, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [message.id, message.conversationId, message.senderId, message.senderName, message.text, JSON.stringify(message.attachment), message.status, message.createdAt]
+      `INSERT INTO messages (id, conversation_id, sender_id, sender_name, text, attachment, reply_to, forwarded, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [
+        message.id,
+        message.conversationId,
+        message.senderId,
+        message.senderName,
+        message.text,
+        JSON.stringify(message.attachment),
+        JSON.stringify(message.replyTo || null),
+        Boolean(message.forwarded),
+        message.status,
+        message.createdAt,
+      ]
     );
     
     await pool.query(

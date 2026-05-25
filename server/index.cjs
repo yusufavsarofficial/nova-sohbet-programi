@@ -37,9 +37,10 @@ const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|webp|pdf|doc|docx|mp3|mp4|webm/;
+    const allowedTypes = /jpeg|jpg|png|gif|webp|pdf|doc|docx|txt|csv|xls|xlsx|mp3|wav|ogg|m4a|mp4|webm|zip/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
+    const mimetype = /^(image|audio|video)\//.test(file.mimetype)
+      || /pdf|msword|officedocument|plain|csv|excel|spreadsheet|zip/.test(file.mimetype);
     if (extname && mimetype) {
       return cb(null, true);
     }
@@ -89,6 +90,11 @@ function publicUser(user) {
 
 function signToken(user) {
   return jwt.sign({ sub: user.id, phone: user.phone }, JWT_SECRET, { expiresIn: '30d' });
+}
+
+function normalizeTranslateLanguage(value) {
+  const language = String(value || 'auto').trim().toLowerCase();
+  return /^[a-z]{2,5}(-[a-z]{2,5})?$/.test(language) || language === 'auto' ? language : 'auto';
 }
 
 function authMiddleware(req, res, next) {
@@ -157,6 +163,42 @@ function createApp() {
 
   app.get('/health', (req, res) => {
     res.json({ ok: true, app: 'Kaplumbağa', timestamp: Date.now(), db: db.usePostgres() ? 'postgres' : 'json' });
+  });
+
+  app.post('/api/translate', authMiddleware, async (req, res) => {
+    const text = String(req.body?.text || '').trim();
+    const from = normalizeTranslateLanguage(req.body?.from);
+    const to = normalizeTranslateLanguage(req.body?.to || 'tr');
+    if (!text) return res.status(400).json({ ok: false, error: 'Metin gerekli.' });
+    if (to === 'auto') return res.status(400).json({ ok: false, error: 'Hedef dil gerekli.' });
+
+    try {
+      const googleUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(from)}&tl=${encodeURIComponent(to)}&dt=t&q=${encodeURIComponent(text)}`;
+      const googleResponse = await fetch(googleUrl);
+      if (googleResponse.ok) {
+        const data = await googleResponse.json();
+        const translated = Array.isArray(data?.[0]) ? data[0].map((part) => part?.[0] || '').join('') : '';
+        if (translated) {
+          return res.json({ ok: true, translated, original: text, from: data?.[2] || from, to, provider: 'google' });
+        }
+      }
+
+      if (from !== 'auto') {
+        const memoryUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${encodeURIComponent(`${from}|${to}`)}`;
+        const memoryResponse = await fetch(memoryUrl);
+        if (memoryResponse.ok) {
+          const data = await memoryResponse.json();
+          const translated = data.responseData?.translatedText;
+          if (translated) {
+            return res.json({ ok: true, translated, original: text, from, to, provider: 'mymemory' });
+          }
+        }
+      }
+
+      return res.json({ ok: true, translated: text, original: text, from, to, provider: 'none' });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: 'Çeviri hatası.' });
+    }
   });
 
   app.post('/api/auth/register', async (req, res) => {
@@ -272,6 +314,8 @@ function createApp() {
     const conv = conversation.find(c => c.id === req.params.conversationId);
     const text = String(req.body?.text || '').trim();
     const attachment = req.body?.attachment || null;
+    const replyTo = req.body?.replyTo || req.body?.reply_to || null;
+    const forwarded = Boolean(req.body?.forwarded);
 
     if (!conv) {
       return res.status(404).json({ ok: false, error: 'Sohbet bulunamadı.' });
@@ -288,6 +332,8 @@ function createApp() {
       senderName: sender?.name || 'Kaplumbağa Kullanıcısı',
       text,
       attachment,
+      replyTo,
+      forwarded,
       createdAt: Date.now(),
       status: 'sent',
     };
@@ -309,8 +355,11 @@ function createApp() {
 
   app.delete('/api/conversations/:conversationId', authMiddleware, async (req, res) => {
     try {
+      const participants = await db.getGroupParticipants(req.params.conversationId).catch(() => []);
       await db.deleteConversation(req.params.conversationId, req.auth.sub);
-      io.to(`conversation:${req.params.conversationId}`).emit('conversation:deleted', { conversationId: req.params.conversationId });
+      const deletion = { conversationId: req.params.conversationId };
+      io.to(`conversation:${req.params.conversationId}`).emit('conversation:deleted', deletion);
+      participants.forEach((pid) => io.to(`user:${pid}`).emit('conversation:deleted', deletion));
       res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message });
@@ -335,6 +384,10 @@ function createApp() {
     const message = await db.updateMessage(req.params.messageId, { text, edited_at: Date.now() });
     const conversationId = message.conversation_id || message.conversationId;
     io.to(`conversation:${conversationId}`).emit('message:updated', message);
+    try {
+      const participants = await db.getGroupParticipants(conversationId);
+      participants.forEach((pid) => io.to(`user:${pid}`).emit('message:updated', message));
+    } catch (e) { /* ignore */ }
     res.json({ ok: true, message });
   });
 
@@ -350,7 +403,13 @@ function createApp() {
     }
 
     await db.deleteMessage(req.params.messageId);
-    io.to(`conversation:${msg.conversation_id || msg.conversationId}`).emit('message:deleted', { messageId: req.params.messageId });
+    const conversationId = msg.conversation_id || msg.conversationId;
+    const deletion = { conversationId, messageId: req.params.messageId };
+    io.to(`conversation:${conversationId}`).emit('message:deleted', deletion);
+    try {
+      const participants = await db.getGroupParticipants(conversationId);
+      participants.forEach((pid) => io.to(`user:${pid}`).emit('message:deleted', deletion));
+    } catch (e) { /* ignore */ }
     res.json({ ok: true });
   });
 
@@ -426,6 +485,11 @@ function createApp() {
     await db.updateUser(req.auth.sub, { avatar: avatarUrl });
     
     res.json({ ok: true, avatar: avatarUrl });
+  });
+
+  app.use((error, req, res, next) => {
+    if (!error) return next();
+    res.status(400).json({ ok: false, error: error.message || 'İstek işlenemedi.' });
   });
 
   io.use((socket, next) => {

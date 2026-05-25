@@ -104,6 +104,11 @@ function signToken(user) {
   return jwt.sign({ sub: user.id, phone: user.phone }, JWT_SECRET, { expiresIn: '30d' });
 }
 
+function normalizeTranslateLanguage(value) {
+  const language = String(value || 'auto').trim().toLowerCase();
+  return /^[a-z]{2,5}(-[a-z]{2,5})?$/.test(language) || language === 'auto' ? language : 'auto';
+}
+
 async function withStore(event) {
   const hasBlobsContext = Boolean(event.blobs || process.env.NETLIFY_BLOBS_CONTEXT || globalThis.netlifyBlobsContext);
   if (hasBlobsContext) {
@@ -230,6 +235,30 @@ exports.handler = async (event) => {
       return json(200, { ok: true, user: publicUser(session.user) });
     }
 
+    if (event.httpMethod === 'POST' && route === '/translate') {
+      const session = await requireAuth(event, state);
+      if (session.error) return session.error;
+
+      const text = String(body.text || '').trim();
+      const from = normalizeTranslateLanguage(body.from);
+      const to = normalizeTranslateLanguage(body.to || 'tr');
+      if (!text) return json(400, { ok: false, error: 'Metin gerekli.' });
+      if (to === 'auto') return json(400, { ok: false, error: 'Hedef dil gerekli.' });
+
+      try {
+        const translateUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(from)}&tl=${encodeURIComponent(to)}&dt=t&q=${encodeURIComponent(text)}`;
+        const translateResponse = await fetch(translateUrl);
+        if (translateResponse.ok) {
+          const data = await translateResponse.json();
+          const translated = Array.isArray(data?.[0]) ? data[0].map((part) => part?.[0] || '').join('') : '';
+          if (translated) return json(200, { ok: true, translated, original: text, from: data?.[2] || from, to });
+        }
+        return json(200, { ok: true, translated: text, original: text, from, to });
+      } catch {
+        return json(500, { ok: false, error: 'Ceviri hatasi.' });
+      }
+    }
+
     if (event.httpMethod === 'PATCH' && route === '/me') {
       const session = await requireAuth(event, state);
       if (session.error) return session.error;
@@ -301,6 +330,8 @@ exports.handler = async (event) => {
       if (event.httpMethod === 'POST') {
         const text = String(body.text || '').trim();
         const attachment = body.attachment || null;
+        const replyTo = body.replyTo || body.reply_to || null;
+        const forwarded = Boolean(body.forwarded);
 
         if (!text && !attachment) {
           return json(400, { ok: false, error: 'Mesaj veya dosya gerekli.' });
@@ -313,6 +344,8 @@ exports.handler = async (event) => {
           senderName: session.user.name || 'Kaplumbağa Kullanıcısı',
           text,
           attachment,
+          replyTo,
+          forwarded,
           createdAt: Date.now(),
           status: 'sent',
         };

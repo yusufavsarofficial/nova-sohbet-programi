@@ -1,7 +1,7 @@
 const path = require('path');
 const { app, BrowserWindow, Menu } = require('electron');
 
-const isDev = process.env.NOVA_DESKTOP_DEV === '1';
+const isDev = process.env.KAPLUMBAGA_DESKTOP_DEV === '1';
 
 function createWindow() {
   const window = new BrowserWindow({

@@ -8,17 +8,19 @@ const defaultContacts = [];
 const starterMessages = {};
 
 const storageKeys = {
-  user: 'nova:user',
-  contacts: 'nova:contacts',
-  messages: 'nova:messages',
-  settings: 'nova:settings',
-};
-
-const legacyStorageKeys = {
   user: 'kaplumbaga:user',
   contacts: 'kaplumbaga:contacts',
   messages: 'kaplumbaga:messages',
   settings: 'kaplumbaga:settings',
+  archived: 'kaplumbaga:archived',
+};
+
+const legacyStorageKeys = {
+  user: 'nova:user',
+  contacts: 'nova:contacts',
+  messages: 'nova:messages',
+  settings: 'nova:settings',
+  archived: 'nova:archived',
 };
 
 const emojis = ['😀','😃','😄','😁','😂','🤣','😊','😍','😘','😎','😢','😭','😡','👍','👎','👏','🙏','💪','🔥','🎉','❤️','💚','💙','⭐','✅','❌','🐢','📷','🎤','📎','🚀','☕','👋','🤝','👀','🌟','💯','🎁','🎈','🎂','🍰','🍕','🍔','🍟','🌮','🌯','🍿','🥤','🍺','🍷','🍸','🥂','🍎','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🥝','🍑','🥭','🍍','🥥','🥑','🍆','🥔','🥕','🌽','🥦','🥬','🥒','🍄','🥜','🌰','🍞','🥐','🥖','🥨','🥯','🥞','🧇','🧀','🍖','🍗','🥩','🥓','🍔','🍟','🍕','🌭','🥪','🌮','🌯','🥙','🧆','🥚','🍳','🥘','🍲','🥣','🥗','🍿','🧈','🧂','🥫','🍱','🍘','🍙','🍚','🍛','🍜','🍝','🍠','🍢','🍣','🍤','🍥','🥮','🍡','🥟','🥠','🥡','🦀','🦞','🦐','🦑','🦪','🍦','🍧','🍨','🍩','🍪','🎂','🍰','🧁','🥧','🍫','🍬','🍭','🍮','🍯','🍼','🥛','☕','🍵','🍶','🍾','🍷','🍸','🍹','🍺','🍻','🥂','🥃','🥤','🧃','🧉','🧊','🥢','🍽️','🍴','🥄','🔪','🏺','🌍','🌎','🌏','🌐','🗺️','🗾','🧭','🏔️','⛰️','🌋','🗻','🏕️','🏖️','🏜️','🏝️','🏞️','🏟️','🏛️','🏗️','🧱','🏘️','🏚️','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬','🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','🛕','🕍','⛩️','🕋','⛲','⛺','🌁','🌃','🏙️','🌄','🌅','🌆','🌇','🌉','♨️','🎠','🎡','🎢','💈','🎪','🚂','🚃','🚄','🚅','🚆','🚇','🚈','🚉','🚊','🚝','🚞','🚋','🚌','🚍','🚎','🚐','🚑','🚒','🚓','🚔','🚕','🚖','🚗','🚘','🚙','🚚','🚛','🚜','🏎️','🏍️','🛵','🦽','🦼','🛺','🚲','🛴','🛹','🚏','🛣️','🛤️','🛢️','⛽','🚨','🚥','🚦','🛑','🚧','⚓','⛵','🛶','🚤','🛳️','⛴️','🛥️','🚢','✈️','🛩️','🛫','🛬','🪂','💺','🚁','🚟','🚠','🚡','🛰️','🚀','🛸','🛎️','🧳','⌛','⏳','⌚','⏰','⏱️','⏲️','🕰️','🕛','🕧','🕐','🕜','🕑','🕝','🕒','🕞','🕓','🕟','🕔','🕠','🕕','🕡','🕖','🕢','🕗','🕣','🕘','🕤','🕙','🕥','🕚','🕦','🌑','🌒','🌓','🌔','🌕','🌖','🌗','🌘','🌙','🌚','🌛','🌜','🌡️','☀️','🌝','🌞','⭐','🌟','🌠','☁️','⛅','⛈️','🌤️','🌥️','🌦️','🌧️','🌨️','🌩️','🌪️','🌫️','🌬️','🌀','🌈','🌂','☂️','☔','⛱️','⚡','❄️','☃️','⛄','☄️','🔥','💧','🌊'];
@@ -68,19 +70,28 @@ function getStoredApiUrl() {
 
 const API_BASE_URL = getStoredApiUrl() || getDefaultApiUrl();
 const SOCKET_ENABLED = (import.meta.env.VITE_SOCKET_ENABLED === '1' || (typeof window !== 'undefined' && isLocalHost(window.location.hostname))) && !API_BASE_URL.includes('netlify.app');
-const TRANSLATE_URL = import.meta.env.VITE_TRANSLATE_URL || 'https://translate.googleapis.com/translate_a/single';
-const translationDictionary = {
-  'hello': { tr: 'merhaba', es: 'hola' },
-  'how are you': { tr: 'nasılsın', es: 'cómo estás' },
-  'thank you': { tr: 'teşekkür ederim', es: 'gracias' },
-  'good night': { tr: 'iyi geceler', es: 'buenas noches' },
-  'merhaba': { en: 'hello', es: 'hola' },
-  'nasılsın': { en: 'how are you', es: 'cómo estás' },
-  'teşekkür ederim': { en: 'thank you', es: 'gracias' },
-  'iyi geceler': { en: 'good night', es: 'buenas noches' },
-  'hola': { tr: 'merhaba', en: 'hello' },
-  'gracias': { tr: 'teşekkür ederim', en: 'thank you' },
-};
+async function translateText(text, from, to, token) {
+  if (!text || !token) return text;
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/translate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ text, from, to }),
+    });
+    const data = await res.json();
+    return data.ok ? data.translated : text;
+  } catch {
+    return text;
+  }
+}
+
+async function readJsonResponse(response, fallbackError) {
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.ok === false) {
+    throw new Error(result.error || fallbackError);
+  }
+  return result;
+}
 
 function readStoredValue(key, fallback, legacyKey) {
   try {
@@ -131,7 +142,7 @@ function App() {
   const [userStatuses, setUserStatuses] = useState({});
   const [replyToMessage, setReplyToMessage] = useState(null);
   const [forwardingMessage, setForwardingMessage] = useState(null);
-  const [archivedContacts, setArchivedContacts] = useState(() => readStoredValue('nova:archived', []));
+  const [archivedContacts, setArchivedContacts] = useState(() => readStoredValue(storageKeys.archived, [], legacyStorageKeys.archived));
   const [showArchived, setShowArchived] = useState(false);
   const [messageActionId, setMessageActionId] = useState(null);
   const [settings, setSettings] = useState(() => readStoredValue(storageKeys.settings, { compactMode: false, soundEnabled: true, language: 'tr', autoTranslate: true, darkMode: false, notifications: true }, legacyStorageKeys.settings));
@@ -145,6 +156,7 @@ function App() {
   const pendingIceCandidatesRef = useRef([]);
   const lastOfferRef = useRef('');
   const socketRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
   const activeContact = contactList.find((contact) => contact.id === activeContactId) ?? contactList[0] ?? {
     id: null,
@@ -156,9 +168,9 @@ function App() {
     unread: 0,
   };
   
-  const getContactStatus = (contactId) => {
-    const status = userStatuses[contactId];
-    if (!status) return contactList.find(c => c.id === contactId)?.status || 'bilinmiyor';
+  const getContactStatus = (contact) => {
+    const status = userStatuses[contact?.userId];
+    if (!status) return contact?.status || 'bilinmiyor';
     if (status.status === 'online') return 'çevrimiçi';
     if (status.lastSeen) {
       const lastSeenDate = new Date(status.lastSeen);
@@ -202,7 +214,7 @@ function App() {
   }, [settings]);
 
   useEffect(() => {
-    window.localStorage.setItem('nova:archived', JSON.stringify(archivedContacts));
+    window.localStorage.setItem(storageKeys.archived, JSON.stringify(archivedContacts));
   }, [archivedContacts]);
 
   useEffect(() => {
@@ -290,7 +302,8 @@ function App() {
           time: now,
           status: 'read',
           attachment: message.attachment,
-          replyTo: message.replyTo || null,
+          replyTo: message.reply_to || message.replyTo || null,
+          forwarded: Boolean(message.forwarded),
         });
         if (message.conversationId === activeContactId) {
           addMessageToConversation(activeContactId, incomingMessage);
@@ -312,9 +325,40 @@ function App() {
         }
       });
 
-      socketRef.current.on('typing', ({ userId, isTyping }) => {
-        if (userId !== activeContactId) return;
+      socketRef.current.on('typing', ({ conversationId, isTyping }) => {
+        if (conversationId !== activeContactId) return;
         setTypingContactId(isTyping ? activeContactId : null);
+      });
+
+      socketRef.current.on('message:updated', (message) => {
+        const conversationId = message.conversation_id || message.conversationId;
+        if (!conversationId) return;
+        setMessages((current) => ({
+          ...current,
+          [conversationId]: (current[conversationId] ?? []).map((item) => (
+            String(item.id) === String(message.id)
+              ? { ...item, text: message.text || '', editedAt: message.edited_at || message.editedAt || Date.now() }
+              : item
+          )),
+        }));
+      });
+
+      socketRef.current.on('message:deleted', ({ conversationId, messageId }) => {
+        if (!conversationId || !messageId) return;
+        setMessages((current) => ({
+          ...current,
+          [conversationId]: (current[conversationId] ?? []).filter((item) => String(item.id) !== String(messageId)),
+        }));
+      });
+
+      socketRef.current.on('conversation:deleted', ({ conversationId }) => {
+        setContactList((current) => current.filter((contact) => contact.id !== conversationId));
+        setMessages((current) => {
+          const next = { ...current };
+          delete next[conversationId];
+          return next;
+        });
+        setActiveContactId((current) => current === conversationId ? null : current);
       });
 
       socketRef.current.on('call:signal', async ({ conversationId, from, type, payload }) => {
@@ -387,6 +431,7 @@ function App() {
       socketRef.current.emit('status:online');
 
       return () => {
+        window.clearTimeout(typingTimeoutRef.current);
         socketRef.current?.emit('status:offline');
         socketRef.current?.disconnect();
       };
@@ -431,6 +476,8 @@ function App() {
       time: formatMessageTime(createdAt),
       status: message.status || 'sent',
       attachment: message.attachment || null,
+      replyTo: message.reply_to || message.replyTo || null,
+      forwarded: Boolean(message.forwarded),
       editedAt: message.edited_at || message.editedAt || null,
     });
   }
@@ -447,7 +494,7 @@ function App() {
 
       const contacts = (result.conversations || []).map(normalizeConversation).filter((contact) => contact.id);
       setContactList(contacts);
-      setActiveContactId((current) => current || contacts[0]?.id || null);
+      setActiveContactId((current) => contacts.some((contact) => contact.id === current) ? current : contacts[0]?.id || null);
     } catch (error) {
       console.error('Sohbet yükleme hatası:', error);
     }
@@ -550,6 +597,8 @@ function App() {
     setDraft('');
     setReplyToMessage(null);
     setTypingContactId(activeContactId);
+    window.clearTimeout(typingTimeoutRef.current);
+    socketRef.current?.emit('typing', { conversationId: activeContactId, isTyping: false });
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/conversations/${activeContactId}/messages`, {
@@ -560,8 +609,7 @@ function App() {
         },
         body: JSON.stringify({ text, replyTo: replySnapshot }),
       });
-      const result = await response.json();
-      if (!result.ok) throw new Error(result.error || 'Mesaj gönderilemedi.');
+      const result = await readJsonResponse(response, 'Mesaj gönderilemedi.');
 
       setMessages((current) => ({
         ...current,
@@ -587,6 +635,18 @@ function App() {
 
   function appendToDraft(value) {
     setDraft((current) => `${current}${current ? ' ' : ''}${value}`);
+  }
+
+  function handleDraftChange(event) {
+    const value = event.target.value;
+    setDraft(value);
+
+    if (!activeContactId || !socketRef.current) return;
+    socketRef.current.emit('typing', { conversationId: activeContactId, isTyping: Boolean(value.trim()) });
+    window.clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = window.setTimeout(() => {
+      socketRef.current?.emit('typing', { conversationId: activeContactId, isTyping: false });
+    }, 1400);
   }
 
   function addMessageToConversation(contactId, message) {
@@ -615,8 +675,7 @@ function App() {
         body: formData
       });
       
-      const result = await response.json();
-      if (!result.ok) throw new Error(result.error || 'Dosya yüklenemedi.');
+      const result = await readJsonResponse(response, 'Dosya yüklenemedi.');
       
       const now = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
       const isImage = file.type.startsWith('image/');
@@ -636,7 +695,7 @@ function App() {
       });
 
       addMessageToConversation(activeContactId, message);
-      await fetch(`${API_BASE_URL}/api/conversations/${activeContactId}/messages`, {
+      const messageResponse = await fetch(`${API_BASE_URL}/api/conversations/${activeContactId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -644,6 +703,13 @@ function App() {
         },
         body: JSON.stringify({ text, attachment: message.attachment }),
       });
+      const messageResult = await readJsonResponse(messageResponse, 'Dosya mesajı gönderilemedi.');
+      setMessages((current) => ({
+        ...current,
+        [activeContactId]: (current[activeContactId] ?? []).map((item) => (
+          item.id === message.id ? { ...item, id: messageResult.message.id, status: 'delivered' } : item
+        )),
+      }));
       setContactList((current) => moveContactToTop(current.map((contact) => (
         contact.id === activeContactId
           ? { ...contact, lastMessage: text, time: now, unread: 0 }
@@ -655,6 +721,50 @@ function App() {
       window.setTimeout(() => setCallBanner(''), 2200);
     }
     event.target.value = '';
+  }
+
+  async function uploadBlobMessage(blob, fileName, text) {
+    if (!activeContactId || !user?.token) return;
+
+    const formData = new FormData();
+    formData.append('file', new File([blob], fileName, { type: blob.type || 'audio/webm' }));
+
+    const uploadResponse = await fetch(`${API_BASE_URL}/api/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${user.token}` },
+      body: formData,
+    });
+    const uploadResult = await readJsonResponse(uploadResponse, 'Ses kaydı yüklenemedi.');
+
+    const attachment = {
+      name: fileName,
+      type: blob.type || 'audio/webm',
+      size: blob.size,
+      url: `${API_BASE_URL}${uploadResult.file.url}`,
+    };
+
+    const now = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    const localMessage = buildMessage({ from: 'me', text, time: now, status: 'sent', attachment });
+    addMessageToConversation(activeContactId, localMessage);
+
+    const messageResponse = await fetch(`${API_BASE_URL}/api/conversations/${activeContactId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.token}` },
+      body: JSON.stringify({ text, attachment }),
+    });
+    const messageResult = await readJsonResponse(messageResponse, 'Ses kaydı gönderilemedi.');
+
+    setMessages((current) => ({
+      ...current,
+      [activeContactId]: (current[activeContactId] ?? []).map((item) => (
+        item.id === localMessage.id ? { ...item, id: messageResult.message.id, status: 'delivered' } : item
+      )),
+    }));
+    setContactList((current) => moveContactToTop(current.map((contact) => (
+      contact.id === activeContactId
+        ? { ...contact, lastMessage: text, time: now, unread: 0 }
+        : contact
+    )), activeContactId));
   }
 
   function attachLocalPhoto() {
@@ -926,33 +1036,17 @@ function App() {
         if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-        const reader = new FileReader();
-        reader.onload = () => {
-          const now = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-          const message = buildMessage({
-            from: 'me',
-            text: '🎤 Ses kaydı',
-            time: now,
-            status: 'sent',
-            attachment: {
-              name: `ses-kaydi-${Date.now()}.webm`,
-              type: blob.type,
-              size: blob.size,
-              dataUrl: reader.result,
-            },
-          });
-          addMessageToConversation(activeContactId, message);
-          setContactList((current) => moveContactToTop(current.map((contact) => (
-            contact.id === activeContactId
-              ? { ...contact, lastMessage: '🎤 Ses kaydı', time: now, unread: 0 }
-              : contact
-          )), activeContactId));
-        };
-        reader.readAsDataURL(blob);
         stream.getTracks().forEach((track) => track.stop());
         setIsRecording(false);
+        try {
+          await uploadBlobMessage(blob, `ses-kaydi-${Date.now()}.webm`, '🎤 Ses kaydı');
+        } catch (error) {
+          console.error('Ses kaydı gönderme hatası:', error);
+          setCallBanner(error.message || 'Ses kaydı gönderilemedi.');
+          window.setTimeout(() => setCallBanner(''), 3500);
+        }
       };
 
       recorder.start();
@@ -970,7 +1064,7 @@ function App() {
     }
   }
 
-  function saveProfile(event) {
+  async function saveProfile(event) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const name = formData.get('name').trim();
@@ -980,8 +1074,19 @@ function App() {
       return;
     }
 
-    setUser((current) => ({ ...current, name, about }));
-    setIsEditingProfile(false);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/me`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.token}` },
+        body: JSON.stringify({ name, about, language: userLanguage }),
+      });
+      const result = await readJsonResponse(response, 'Profil kaydedilemedi.');
+      setUser((current) => ({ ...current, ...result.user, contact: result.user.phone, token: current.token, verifiedAt: current.verifiedAt }));
+      setIsEditingProfile(false);
+    } catch (error) {
+      setCallBanner(error.message || 'Profil kaydedilemedi.');
+      window.setTimeout(() => setCallBanner(''), 3500);
+    }
   }
 
   async function addContact(event) {
@@ -1160,13 +1265,28 @@ function App() {
         : contact
     )), targetContactId));
     try {
-      await fetch(`${API_BASE_URL}/api/conversations/${targetContactId}/messages`, {
+      const response = await fetch(`${API_BASE_URL}/api/conversations/${targetContactId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.token}` },
         body: JSON.stringify({ text, attachment: forwardingMessage.attachment || null, forwarded: true }),
       });
+      const result = await readJsonResponse(response, 'Mesaj iletilemedi.');
+      setMessages((current) => ({
+        ...current,
+        [targetContactId]: (current[targetContactId] ?? []).map((item) => (
+          item.id === message.id ? { ...item, id: result.message.id, status: 'delivered' } : item
+        )),
+      }));
     } catch (error) {
       console.error('İletme hatası:', error);
+      setMessages((current) => ({
+        ...current,
+        [targetContactId]: (current[targetContactId] ?? []).map((item) => (
+          item.id === message.id ? { ...item, status: 'failed' } : item
+        )),
+      }));
+      setCallBanner(error.message || 'Mesaj iletilemedi.');
+      window.setTimeout(() => setCallBanner(''), 3000);
     }
     setForwardingMessage(null);
     setActiveContactId(targetContactId);
@@ -1228,17 +1348,18 @@ function App() {
         },
         body: JSON.stringify({ text: editDraft.trim() })
       });
-      if (response.ok) {
-        setMessages((current) => ({
-          ...current,
-          [activeContactId]: (current[activeContactId] ?? []).map(m => 
-            m.id === editingMessageId ? { ...m, text: editDraft.trim(), editedAt: Date.now() } : m
-          )
-        }));
-        cancelEdit();
-      }
+      await readJsonResponse(response, 'Mesaj düzenlenemedi.');
+      setMessages((current) => ({
+        ...current,
+        [activeContactId]: (current[activeContactId] ?? []).map(m =>
+          m.id === editingMessageId ? { ...m, text: editDraft.trim(), editedAt: Date.now() } : m
+        )
+      }));
+      cancelEdit();
     } catch (error) {
       console.error('Mesaj düzenleme hatası:', error);
+      setCallBanner(error.message || 'Mesaj düzenlenemedi.');
+      window.setTimeout(() => setCallBanner(''), 3000);
     }
   }
 
@@ -1289,32 +1410,17 @@ function App() {
 
   async function requestRealTranslation(message, contactId) {
     if (!settings.autoTranslate || !message.text) return;
-    if (message.sourceLang && message.sourceLang === userLanguage) return;
-
+    const sourceLang = detectLanguageHeuristic(message.text);
+    if (sourceLang === userLanguage) return;
+    const targetLang = userLanguage;
     try {
-      const url = `${TRANSLATE_URL}?client=gtx&sl=auto&tl=${encodeURIComponent(userLanguage)}&dt=t&q=${encodeURIComponent(message.text)}`;
-      const response = await fetch(url);
-      if (!response.ok) return;
-
-      const result = await response.json();
-      let translatedText = '';
-      let detectedLang = message.sourceLang;
-
-      if (Array.isArray(result) && Array.isArray(result[0])) {
-        translatedText = result[0].map((segment) => segment?.[0] || '').join('');
-        detectedLang = result[2] || detectedLang;
-      } else if (result.translatedText) {
-        translatedText = result.translatedText;
-        detectedLang = result.detectedSourceLanguage || detectedLang;
-      }
-
+      const translatedText = await translateText(message.text, sourceLang, targetLang, user?.token);
       if (!translatedText || translatedText === message.text) return;
-
       setMessages((current) => ({
         ...current,
         [contactId]: (current[contactId] ?? []).map((item) => (
           item.id === message.id
-            ? { ...item, translatedText, sourceLang: detectedLang, translationProvider: 'google' }
+            ? { ...item, translatedText, sourceLang, translationProvider: 'kaplumbaga' }
             : item
         )),
       }));
@@ -1574,7 +1680,7 @@ function App() {
           <div className="avatar large">{activeContact.avatar}</div>
           <div>
             <strong>{activeContact.name}</strong>
-            <span>{typingContactId === activeContactId ? 'yazıyor...' : getContactStatus(activeContact.id)}</span>
+            <span>{typingContactId === activeContactId ? 'yazıyor...' : getContactStatus(activeContact)}</span>
           </div>
           <div className="header-actions">
             <button type="button" onClick={() => startCall('video')} aria-label="Görüntülü ara"><Video size={21} /></button>
@@ -1769,7 +1875,7 @@ function App() {
           <button type="button" aria-label="Dosya ekle" onClick={attachPhoto}><Paperclip size={22} /></button>
           <button type="button" aria-label={isRecording ? 'Kaydı durdur' : 'Ses kaydı'} onClick={toggleRecording}>{isRecording ? <Square size={20} /> : <Mic size={22} />}</button>
           <button type="button" aria-label="Bildirim sesi testi" onClick={playNotificationSound}><Bell size={21} /></button>
-          <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Mesaj yazın" />
+          <input value={draft} onChange={handleDraftChange} placeholder="Mesaj yazın" />
           <button className="send-button" type="submit" aria-label="Gönder"><Send size={20} /></button>
         </form>
       </section>
