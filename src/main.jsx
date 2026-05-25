@@ -32,7 +32,7 @@ const languageNames = {
   fa: 'فارسی', vi: 'Tiếng Việt', id: 'Bahasa Indonesia',
 };
 const LOCAL_API_URL = 'http://127.0.0.1:4000';
-const PRODUCTION_API_URL = 'https://kaplumbaga-api.onrender.com';
+const PRODUCTION_API_URL = 'https://nova-sohbet-api.onrender.com';
 const CONNECTION_ERROR_MESSAGE = 'Backend API’ye bağlanılamadı. API çalışıyor mu ve adres doğru mu?';
 
 function normalizeApiUrl(value) {
@@ -66,7 +66,7 @@ function getApiUrlIssue(value) {
     if (pointsToLocalApiFromLive) return 'live-to-local';
   }
 
-  if (url.includes('nova-sohbet-api.onrender.com')) return 'old-render-slug';
+  if (url.includes('kaplumbaga-api.onrender.com')) return 'old-render-slug';
 
   return '';
 }

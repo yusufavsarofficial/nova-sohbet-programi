@@ -85,7 +85,7 @@ Lokal geliştirmede frontend varsayılan olarak `http://127.0.0.1:4000` adresine
 Canlı yayında Netlify ortam değişkenlerinde şunu ayarlayın:
 
 ```text
-VITE_API_URL=https://render-backend-adresin.onrender.com
+VITE_API_URL=https://nova-sohbet-api.onrender.com
 ```
 
 Uygulama içindeki sunucu URL ayarı hatalı, eski veya `0.0.0.0` gibi geçersiz bir adres olursa güvenli varsayılana döner.
